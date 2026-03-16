@@ -8,7 +8,7 @@ The following tutorial is the easiest way I found to install Union
 
 **!! SUPER IMPORTANT !!**
 
-If you know your language is missing. Install the language files before installing anything!
+If you know your language is missing, drop the localisation files in your game directory before anything else!
 
 **!! SUPER IMPORTANT !!**
 
@@ -32,16 +32,13 @@ If you know your language is missing. Install the language files before installi
 - Box64 Preset: **Performance**
 - Only DirectSound: set to **Builtin (Wine)** the rest **Native (Windows)**
 3. In GameNative click Open Container
-4. Patches will not be in GameNative because games are installed in A:\ (Patches need game to be installed in a subdirectory e.g. A:\0\)
-5. Go into `A:\` make a directory (call it 0 or something) then move all files from A:\ into that directory. Now your game is in `A:\0\Gothic3.exe`
-6. Make sure no files are left in `A:\`
-7. Install `Gothic_3_EE_Patch_v1.75.14_Int_Full.exe` into `A:\0\`
-8. (Untick `Armor_Fix`) Install `Gothic_3_EE_v1.75_Int_Update_Pack_v1.04.11.exe` into `A:\0\`
-9. Paste `G3 UpdatePack v1.05.10 PublicBeta` into `A:\0\`
-10. Install `Gothic_3_Parallel_Universe_Patch_v1.1.1.exe` into `A:\0\`
-11. Move files back from `A:\0\` to `A:\`
-12. Now close the Container
-13. In GameNative make sure that your Executable Path is `system/Gothic3.exe`
+4. Make sure no files are left in `C:\users\xuser\Documents\gothic3`
+5. Install `Gothic_3_EE_Patch_v1.75.14_Int_Full.exe`
+6. (Untick `Armor_Fix`) Install `Gothic_3_EE_v1.75_Int_Update_Pack_v1.04.11.exe`
+7. Paste `G3 UpdatePack v1.05.10 PublicBeta` game directory
+8. Install `Gothic_3_Parallel_Universe_Patch_v1.1.1.exe`
+9. Now close the Container
+10. In GameNative make sure that your Executable Path is `Gothic3.exe`
 
 If you're missing your translation, please follow the DepotDownloader tutorial [GameNative may not pull your language correctly
 ](../README.md)
