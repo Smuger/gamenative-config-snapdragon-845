@@ -1,10 +1,8 @@
-#!/bin/bash
+#!/bin/sh
 
 echo "Starting dynamic lowercase and merge process..."
 
-# We use -depth to process files bottom-up. 
-# This ensures we don't rename a parent folder while the script 
-# is still trying to process the files inside it.
+# Part 1: Merge and Lowercase Everything
 find . -depth | while read -r item; do
     
     # Skip the root directory itself
@@ -39,4 +37,38 @@ find . -depth | while read -r item; do
     fi
 done
 
-echo "Process complete. Everything is lowercased and merged!"
+echo "Base merge complete! Applying Gothic VDFS engine fixes..."
+
+# Part 2: Force critical engine folders to the correct Title Case
+if [ -d "data" ]; then 
+    mv data Data
+    echo "Fixed root Data folder."
+fi
+
+if [ -d "_work/data" ]; then 
+    mv _work/data _work/Data
+    echo "Fixed _work/Data folder."
+fi
+
+if [ -d "system" ]; then
+    mv system System
+    echo "Fixed System folder."
+fi
+
+# Fix the ini file if it exists so the engine can read it
+if [ -f "System/gothic.ini" ]; then 
+    mv System/gothic.ini System/Gothic.ini
+fi
+
+# Part 3: Wipe out old desynced cache files (covering all possible casings)
+rm -f vdfs.dmp VDFS.DMP System/vdfs.dmp System/VDFS.DMP system/vdfs.dmp system/VDFS.DMP
+echo "Cleared old VDFS cache."
+
+# Part 4: Generate the correct, factory-standard VDFS.CFG file
+echo "[VDFS]" > VDFS.CFG
+echo "*.vdf" >> VDFS.CFG
+echo "*.mod" >> VDFS.CFG
+echo "[END]" >> VDFS.CFG
+echo "Generated correct VDFS.CFG."
+
+echo "All fixes applied! You are ready to launch GothicMod.exe."
