@@ -1,0 +1,18 @@
+-norestrictions
+-nomemrestrict
+-managed
+-safemode
+-availablevidmem 1024
+-percentvidmem 75
+-noprecache
+-viewdistance 0
+-detailquality 0
+-shadowdensity 0
+-shadowquality 0
+-renderquality 0
+-texturequality 0
+-disableimposters
+-minspecaudio
+-width 960
+-height 540
+-refreshrate 60
