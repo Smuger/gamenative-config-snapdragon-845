@@ -1,5 +1,8 @@
 ### [Gothic 3](https://steamdb.info/app/39500/depots/) on Steam
 
+Make sure you are running [GameNative](https://github.com/utkarshdalal/GameNative/releases) version >= 0.9.0 
+Otherwise languages downloaded from steam will not overwrite each other correctly
+
 ### This tutorial may not work in a couple of months as the game gets updated on Steam
 
 Gothic 3, downloaded from Steam, will not start on your device as of February 2026. The Steam version is very outdated and needs lots of patches
@@ -20,16 +23,16 @@ If you know your language is missing, drop the localisation files in your game d
 - [Gothic_3_Parallel_Universe_Patch_v1.1.1.exe](https://www.worldofgothic.de/dl/download_678.htm)
 2. Gothic 2 runs fine on my device with the following config:
 - Container Variant: **bionic**
-- Wine Version: **proton-9.0-x86_64**
+- Wine Version: **proton-10.0-4_x86_64** [My custom Proton](https://github.com/Smuger/proton-wine/releases/tag/build-20260313-1)
 - Executable Path: **system/GothicMod.exe**
 - Screen Size: **1280x720**
 - Audio Driver: **PulseAudio**
 - Graphic Driver: **Wrapper**
 - Graphic Driver Version: **turnip26.0.0_R8**
-- DX Wrapper: **2.7.1**
+- DX Wrapper: **2.6.2-0**
 - Max Device Memory: **0 MB**
 - Box64 Version: **0.4.0**
-- Box64 Preset: **Performance**
+- Box64 Preset: **Intermediate**
 - Only DirectSound: set to **Builtin (Wine)** the rest **Native (Windows)**
 3. In GameNative click Open Container
 4. Make sure no files are left in `C:\users\xuser\Documents\gothic3`

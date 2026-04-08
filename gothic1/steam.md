@@ -1,5 +1,8 @@
 ### [Gothic 1](https://steamdb.info/app/65540/depots/) on Steam
 
+Make sure you are running [GameNative](https://github.com/utkarshdalal/GameNative/releases) version >= 0.9.0 
+Otherwise languages downloaded from steam will not overwrite each other correctly
+
 ### This tutorial may not work in a couple of months as the game gets updated on Steam
 
 Gothic 1 downloaded from Steam will, as of February 2026, will not start on your device. I think the reason is that Steam did not include **Union** in its release 
