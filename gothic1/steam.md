@@ -22,7 +22,17 @@ The following tutorial is the easiest way I found to install Union
 - Max Device Memory: **0 MB**
 - Box64 Version: **0.4.0**
 - Box64 Preset: **Performance**
-- Only DirectSound: set to **Builtin (Wine)** the rest **Native (Windows)**
+
+Components:
+- Direct3D (Windows)
+- DirectSound (Wine)
+- DirectMusic (Wine)
+- DirectShow (Windows)
+- DirectPlay (Wine)
+- Virtual C++ 2010 (Windows)
+- Windows Media Decoder (Windows)
+- OpenGL (Wine)
+
 3. In GameNative click **Open Container**
 4. In D:/ drive find your Spine and install it
 5. In Spine, go to Databases and find Union (it will be under tools, and Gothic I & II) and install it
