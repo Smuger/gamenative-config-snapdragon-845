@@ -26,7 +26,17 @@ If you know your language is missing, drop the localisation files in your game d
 - Max Device Memory: **0 MB**
 - Box64 Version: **0.4.0**
 - Box64 Preset: **Performance**
-- Only DirectSound: set to **Builtin (Wine)** the rest **Native (Windows)**
+
+Components:
+- Direct3D (Windows)
+- DirectSound (Wine)
+- DirectMusic (Wine)
+- DirectShow (Windows)
+- DirectPlay (Wine)
+- Virtual C++ 2010 (Windows)
+- Windows Media Decoder (Windows)
+- OpenGL (Wine)
+
 3. In GameNative click Open Container
 4. Unpack downloaded x64 patch in game root `A:\`
 5. Install **fix_msvcr71.reg** by double clicking on it
