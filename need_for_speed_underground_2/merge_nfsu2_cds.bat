@@ -82,7 +82,14 @@ echo       CD1 copy finished (robocopy code !RC!).
 
 echo [3/8] Renaming CD1 compressed.zip ...
 if not exist "%OUT%\compressed.zip" (
-  echo [ERROR] compressed.zip missing after CD1 copy.
+  echo [WARN] compressed.zip missing after CD1 robocopy. Trying direct copy...
+  if exist "%SRC1%\compressed.zip" (
+    copy /y "%SRC1%\compressed.zip" "%OUT%\compressed.zip" >nul
+  )
+)
+if not exist "%OUT%\compressed.zip" (
+  echo [ERROR] compressed.zip still missing after CD1 copy.
+  echo        Source checked: "%SRC1%\compressed.zip"
   goto :end
 )
 if exist "%OUT%\compressed_cd1.zip" del /f /q "%OUT%\compressed_cd1.zip"
@@ -103,7 +110,14 @@ if !RC! GEQ 8 (
 echo       CD2 copy finished (robocopy code !RC!).
 
 if not exist "%OUT%\compressed.zip" (
+  echo [WARN] compressed.zip missing after CD2 robocopy. Trying direct copy...
+  if exist "%SRC2%\compressed.zip" (
+    copy /y "%SRC2%\compressed.zip" "%OUT%\compressed.zip" >nul
+  )
+)
+if not exist "%OUT%\compressed.zip" (
   echo [ERROR] CD2 compressed.zip did not appear in output.
+  echo        Source checked: "%SRC2%\compressed.zip"
   goto :end
 )
 if exist "%OUT%\compressed_cd2.zip" del /f /q "%OUT%\compressed_cd2.zip"
