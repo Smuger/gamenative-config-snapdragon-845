@@ -11,6 +11,7 @@ echo ========================================
 echo  Installs if missing:
 echo    - .NET Framework 4.5+  (Release >= 378389)
 echo    - PowerShell (pwsh MSI)
+echo    - 7-Zip command line (7z.exe)
 echo ========================================
 echo.
 
@@ -25,10 +26,16 @@ set "PS_VER=7.6.1"
 set "PS_URL=https://github.com/PowerShell/PowerShell/releases/download/v%PS_VER%/PowerShell-%PS_VER%-win-x64.msi"
 set "PS_MSI=%WORK%\PowerShell-%PS_VER%-win-x64.msi"
 
+set "ZIP_URL=https://www.7-zip.org/a/7z2409-x64.exe"
+set "ZIP_URL_FALLBACK=https://www.7-zip.org/a/7z2301-x64.exe"
+set "ZIP_EXE=%WORK%\7zip_setup_x64.exe"
+set "PF86=%ProgramFiles(x86)%"
+
 set "HAVE_PS=0"
 set "HAVE_DOTNET=0"
+set "HAVE_7Z=0"
 
-echo [1/6] Checking PowerShell executables...
+echo [1/7] Checking PowerShell executables...
 where powershell.exe >nul 2>&1 && set "HAVE_PS=1"
 where pwsh.exe >nul 2>&1 && set "HAVE_PS=1"
 if "%HAVE_PS%"=="1" (
@@ -37,7 +44,7 @@ if "%HAVE_PS%"=="1" (
   echo       PowerShell not found in PATH.
 )
 
-echo [2/6] Checking .NET 4.5+...
+echo [2/7] Checking .NET 4.5+...
 set "DOTNET_RELEASE=0"
 for /f "tokens=3" %%R in ('reg query "HKLM\Software\Microsoft\NET Framework Setup\NDP\v4\Full" /v Release 2^>nul ^| find "Release"') do set "DOTNET_RELEASE=%%R"
 if not defined DOTNET_RELEASE set "DOTNET_RELEASE=0"
@@ -50,7 +57,7 @@ if %DOTNET_RELEASE% GEQ 378389 (
   echo       .NET 4.5+ not detected. Release=%DOTNET_RELEASE%
 )
 
-echo [3/6] Download helper selection...
+echo [3/7] Download helper selection...
 set "DL_MODE="
 where powershell.exe >nul 2>&1 && set "DL_MODE=powershell"
 if not defined DL_MODE (
@@ -70,6 +77,8 @@ if not defined DL_MODE (
   echo            - %DOTNET_URL%
   echo            - fallback: %DOTNET_URL_FALLBACK%
   echo            - %PS_URL%
+  echo            - %ZIP_URL%
+  echo            - fallback: %ZIP_URL_FALLBACK%
   echo         - Put them in:
   echo            "%WORK%"
   echo         - Re-run this script.
@@ -78,7 +87,7 @@ if not defined DL_MODE (
 echo       Using: %DL_MODE%
 
 if "%HAVE_DOTNET%"=="0" (
-  echo [4/6] Installing .NET Framework 4.5+...
+  echo [4/7] Installing .NET Framework 4.5+...
   call :download "%DOTNET_URL%" "%DOTNET_EXE%"
   for %%A in ("%DOTNET_EXE%") do set "DOTNET_SIZE=%%~zA"
   if not exist "%DOTNET_EXE%" set "DOTNET_SIZE=0"
@@ -99,11 +108,11 @@ if "%HAVE_DOTNET%"=="0" (
     echo       .NET installer finished with code %DNRC%.
   )
 ) else (
-  echo [4/6] .NET already present, skipping.
+  echo [4/7] .NET already present, skipping.
 )
 
 if "%HAVE_PS%"=="0" (
-  echo [5/6] Installing PowerShell %PS_VER%...
+  echo [5/7] Installing PowerShell %PS_VER%...
   call :download "%PS_URL%" "%PS_MSI%"
   if not exist "%PS_MSI%" (
     echo [ERROR] Failed to download PowerShell MSI.
@@ -117,14 +126,53 @@ if "%HAVE_PS%"=="0" (
     echo       PowerShell installer finished with code %PSRC%.
   )
 ) else (
-  echo [5/6] PowerShell already present, skipping.
+  echo [5/7] PowerShell already present, skipping.
+)
+
+echo [6/7] Checking or installing 7-Zip...
+where 7z.exe >nul 2>&1 && set "HAVE_7Z=1"
+where 7za.exe >nul 2>&1 && set "HAVE_7Z=1"
+if "%HAVE_7Z%"=="0" if exist "%ProgramFiles%\7-Zip\7z.exe" (
+  set "HAVE_7Z=1"
+  set "PATH=%ProgramFiles%\7-Zip;%PATH%"
+)
+if "%HAVE_7Z%"=="0" if exist "%PF86%\7-Zip\7z.exe" (
+  set "HAVE_7Z=1"
+  set "PATH=%PF86%\7-Zip;%PATH%"
+)
+if "%HAVE_7Z%"=="1" (
+  echo       7-Zip already present.
+) else (
+  echo       7-Zip not found. Installing...
+  call :download "%ZIP_URL%" "%ZIP_EXE%"
+  if not exist "%ZIP_EXE%" (
+    echo       Primary URL failed, trying fallback URL...
+    call :download "%ZIP_URL_FALLBACK%" "%ZIP_EXE%"
+  )
+  if exist "%ZIP_EXE%" (
+    "%ZIP_EXE%" /S
+    if exist "%ProgramFiles%\7-Zip\7z.exe" set "PATH=%ProgramFiles%\7-Zip;%PATH%"
+    if exist "%PF86%\7-Zip\7z.exe" set "PATH=%PF86%\7-Zip;%PATH%"
+    where 7z.exe >nul 2>&1 && set "HAVE_7Z=1"
+    where 7za.exe >nul 2>&1 && set "HAVE_7Z=1"
+    if "%HAVE_7Z%"=="1" (
+      echo       7-Zip install completed.
+    ) else (
+      echo [WARN] 7-Zip installer ran but 7z.exe still not found.
+    )
+  ) else (
+    echo [WARN] Could not download 7-Zip installer.
+  )
 )
 
 :verify
-echo [6/6] Verifying...
+echo [7/7] Verifying...
 set "HAVE_PS=0"
 where powershell.exe >nul 2>&1 && set "HAVE_PS=1"
 where pwsh.exe >nul 2>&1 && set "HAVE_PS=1"
+set "HAVE_7Z=0"
+where 7z.exe >nul 2>&1 && set "HAVE_7Z=1"
+where 7za.exe >nul 2>&1 && set "HAVE_7Z=1"
 set "DOTNET_RELEASE=0"
 for /f "tokens=3" %%R in ('reg query "HKLM\Software\Microsoft\NET Framework Setup\NDP\v4\Full" /v Release 2^>nul ^| find "Release"') do set "DOTNET_RELEASE=%%R"
 if not defined DOTNET_RELEASE set "DOTNET_RELEASE=0"
@@ -140,6 +188,11 @@ if "%HAVE_PS%"=="1" (
   echo   [OK] PowerShell executable found.
 ) else (
   echo   [WARN] PowerShell executable not found in PATH.
+)
+if "%HAVE_7Z%"=="1" (
+  echo   [OK] 7-Zip executable found.
+) else (
+  echo   [WARN] 7-Zip executable not found in PATH.
 )
 echo.
 echo If either check is WARN under Wine, continue anyway:

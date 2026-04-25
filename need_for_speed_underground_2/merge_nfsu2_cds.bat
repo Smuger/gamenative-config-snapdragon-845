@@ -12,11 +12,10 @@ echo.
 echo Base directory: %CD%
 echo  (Put this .bat here next to your two CD folders. Relative paths use this folder.)
 echo.
-echo Zip merge order: (1) tar.exe if present  (2) PowerShell helper
+echo Zip merge order: (1) 7-Zip if present  (2) tar.exe
 echo       (3) if both fail, you merge zips on Linux, then re-run
 echo       steps 6-7 only OR finish by hand - see messages below.
-echo Needs: robocopy. Optional: tar (Win10+) OR PowerShell + .NET 4.5+
-echo Keep merge_nfsu2_zip_helper.ps1 next to this .bat for fallback (2).
+echo Needs: robocopy. Optional: 7-Zip or tar (Win10+)
 echo Source folders must contain full CD roots.
 echo.
 
@@ -138,65 +137,56 @@ if errorlevel 1 (
   goto :end
 )
 
-where tar >nul 2>&1
-if not errorlevel 1 (
-  echo       Trying tar.exe ...
-  tar -xf "%OUT%\compressed_cd1.zip" -C "%MERGE%"
-  if errorlevel 1 (
-    echo [WARN] tar extract CD1 failed, trying next method...
-    rd /s /q "%MERGE%" 2>nul
+set "ZIPCMD="
+where 7z >nul 2>&1 && set "ZIPCMD=7z"
+if not defined ZIPCMD (
+  where 7za >nul 2>&1 && set "ZIPCMD=7za"
+)
+if defined ZIPCMD (
+  echo       Trying !ZIPCMD! ...
+  if exist "%MERGE%" rd /s /q "%MERGE%" 2>nul
+  mkdir "%MERGE%" 2>nul
+  if exist "%OUT%\compressed.zip" del /f /q "%OUT%\compressed.zip"
+  !ZIPCMD! x -y -o"%MERGE%" "%OUT%\compressed_cd1.zip" >nul
+  if not errorlevel 1 (
+    !ZIPCMD! x -y -o"%MERGE%" "%OUT%\compressed_cd2.zip" >nul
+  )
+  if not errorlevel 1 (
+    pushd "%MERGE%"
+    !ZIPCMD! a -tzip "%OUT%\compressed.zip" * >nul
+    set "Z7RC=!ERRORLEVEL!"
+    popd
+    if !Z7RC! EQU 0 if exist "%OUT%\compressed.zip" (
+      set "ZIPOK=1"
+      echo       !ZIPCMD!: merged compressed.zip OK.
+    )
+  )
+  if "!ZIPOK!"=="0" echo [WARN] !ZIPCMD! merge failed, trying next method...
+)
+
+if "!ZIPOK!"=="0" (
+  where tar >nul 2>&1
+  if not errorlevel 1 (
+    echo       Trying tar.exe ...
+    if exist "%MERGE%" rd /s /q "%MERGE%" 2>nul
     mkdir "%MERGE%" 2>nul
-  ) else (
-    tar -xf "%OUT%\compressed_cd2.zip" -C "%MERGE%"
-    if errorlevel 1 (
-      echo [WARN] tar extract CD2 failed, trying next method...
-      rd /s /q "%MERGE%" 2>nul
-      mkdir "%MERGE%" 2>nul
-    ) else (
-      if exist "%OUT%\compressed.zip" del /f /q "%OUT%\compressed.zip"
+    if exist "%OUT%\compressed.zip" del /f /q "%OUT%\compressed.zip"
+    tar -xf "%OUT%\compressed_cd1.zip" -C "%MERGE%"
+    if not errorlevel 1 tar -xf "%OUT%\compressed_cd2.zip" -C "%MERGE%"
+    if not errorlevel 1 (
       pushd "%MERGE%"
       tar -a -cf "%OUT%\compressed.zip" .
       set "TZ=!ERRORLEVEL!"
       popd
-      set "TARFAIL=1"
-      if !TZ! EQU 0 if exist "%OUT%\compressed.zip" set "TARFAIL=0"
-      if "!TARFAIL!"=="0" (
+      if !TZ! EQU 0 if exist "%OUT%\compressed.zip" (
         set "ZIPOK=1"
         echo       tar: merged compressed.zip OK.
-      ) else (
-        echo [WARN] tar did not produce compressed.zip, trying next method...
-        if exist "%OUT%\compressed.zip" del /f /q "%OUT%\compressed.zip"
-        rd /s /q "%MERGE%" 2>nul
-        mkdir "%MERGE%" 2>nul
       )
     )
-  )
-)
-
-if "!ZIPOK!"=="0" (
-  set "HELPER=%~dp0merge_nfsu2_zip_helper.ps1"
-  if exist "!HELPER!" (
-    set "PSCMD="
-    where powershell >nul 2>&1
-    if not errorlevel 1 set "PSCMD=powershell"
-    if not defined PSCMD (
-      where pwsh >nul 2>&1
-      if not errorlevel 1 set "PSCMD=pwsh"
+    if "!ZIPOK!"=="0" (
+      echo [WARN] tar merge failed.
+      echo [WARN] Falling back to manual zip merge instructions.
     )
-    if defined PSCMD (
-      echo       Trying !PSCMD! + .NET ZipFile ...
-      !PSCMD! -NoProfile -ExecutionPolicy Bypass -File "!HELPER!" -Zip1 "%OUT%\compressed_cd1.zip" -Zip2 "%OUT%\compressed_cd2.zip" -WorkDir "%MERGE%" -OutZip "%OUT%\compressed.zip"
-      if errorlevel 1 (
-        echo [WARN] !PSCMD! zip helper failed.
-      ) else if exist "%OUT%\compressed.zip" (
-        set "ZIPOK=1"
-        echo       !PSCMD!: merged compressed.zip OK.
-      )
-    ) else (
-      echo [WARN] Neither powershell.exe nor pwsh.exe in PATH.
-    )
-  ) else (
-    echo [WARN] merge_nfsu2_zip_helper.ps1 not found beside this .bat
   )
 )
 
@@ -211,7 +201,7 @@ if "!ZIPOK!"=="0" (
   echo         unzip -o "/path/to/compressed_cd1.zip"
   echo         unzip -o "/path/to/compressed_cd2.zip"
   echo         zip -r -q ../compressed.zip .
-  echo         cd ..   ^(then copy compressed.zip into OUT folder above^)
+  echo         cd .. and copy compressed.zip into OUT folder above
   echo       Then delete compressed_cd1.zip and compressed_cd2.zip there.
   echo       Continuing with text patches (safe even before you merge zips).
   echo.
