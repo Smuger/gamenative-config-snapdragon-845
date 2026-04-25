@@ -17,8 +17,9 @@ echo.
 set "WORK=%~dp0_wine_setup_downloads"
 if not exist "%WORK%" mkdir "%WORK%"
 
-set "DOTNET_URL=https://download.microsoft.com/download/1/5/A/15A6D7A0-6E78-4F54-8E2C-6A5B0019F91B/dotNetFx45_Full_setup.exe"
-set "DOTNET_EXE=%WORK%\dotNetFx45_Full_setup.exe"
+set "DOTNET_URL=https://go.microsoft.com/fwlink/?linkid=2088631"
+set "DOTNET_URL_FALLBACK=https://download.microsoft.com/download/b/a/4/ba4a7e71-2906-4b2d-a0e1-80cf16844f5f/dotNetFx45_Full_setup.exe"
+set "DOTNET_EXE=%WORK%\dotNetFx_45plus_setup.exe"
 
 set "PS_VER=7.6.1"
 set "PS_URL=https://github.com/PowerShell/PowerShell/releases/download/v%PS_VER%/PowerShell-%PS_VER%-win-x64.msi"
@@ -53,6 +54,9 @@ echo [3/6] Download helper selection...
 set "DL_MODE="
 where powershell.exe >nul 2>&1 && set "DL_MODE=powershell"
 if not defined DL_MODE (
+  where pwsh.exe >nul 2>&1 && set "DL_MODE=pwsh"
+)
+if not defined DL_MODE (
   where certutil.exe >nul 2>&1 && set "DL_MODE=certutil"
 )
 if not defined DL_MODE (
@@ -64,6 +68,7 @@ if not defined DL_MODE (
   echo         Manual path:
   echo         1) Download installers in browser:
   echo            - %DOTNET_URL%
+  echo            - fallback: %DOTNET_URL_FALLBACK%
   echo            - %PS_URL%
   echo         2) Put them in:
   echo            "%WORK%"
@@ -73,8 +78,14 @@ if not defined DL_MODE (
 echo       Using: %DL_MODE%
 
 if "%HAVE_DOTNET%"=="0" (
-  echo [4/6] Installing .NET 4.5 web installer...
+  echo [4/6] Installing .NET Framework 4.5+...
   call :download "%DOTNET_URL%" "%DOTNET_EXE%"
+  for %%A in ("%DOTNET_EXE%") do set "DOTNET_SIZE=%%~zA"
+  if not exist "%DOTNET_EXE%" set "DOTNET_SIZE=0"
+  if "%DOTNET_SIZE%"=="0" (
+    echo       Primary URL failed, trying fallback URL...
+    call :download "%DOTNET_URL_FALLBACK%" "%DOTNET_EXE%"
+  )
   if not exist "%DOTNET_EXE%" (
     echo [ERROR] Failed to download .NET installer.
     goto :end
@@ -142,6 +153,10 @@ if exist "%OUT%" del /f /q "%OUT%" >nul 2>&1
 
 if "%DL_MODE%"=="powershell" (
   powershell -NoProfile -ExecutionPolicy Bypass -Command "try { [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12; Invoke-WebRequest -Uri '%URL%' -OutFile '%OUT%' -UseBasicParsing } catch { exit 1 }"
+  goto :eof
+)
+if "%DL_MODE%"=="pwsh" (
+  pwsh -NoProfile -Command "try { Invoke-WebRequest -Uri '%URL%' -OutFile '%OUT%' } catch { exit 1 }"
   goto :eof
 )
 if "%DL_MODE%"=="certutil" (
