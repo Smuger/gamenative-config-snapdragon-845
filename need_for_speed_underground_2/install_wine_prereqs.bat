@@ -45,9 +45,9 @@ if "%DOTNET_RELEASE%"=="" set "DOTNET_RELEASE=0"
 
 if %DOTNET_RELEASE% GEQ 378389 (
   set "HAVE_DOTNET=1"
-  echo       .NET 4.5+ present (Release=%DOTNET_RELEASE%).
+  echo       .NET 4.5+ present. Release=%DOTNET_RELEASE%
 ) else (
-  echo       .NET 4.5+ not detected (Release=%DOTNET_RELEASE%).
+  echo       .NET 4.5+ not detected. Release=%DOTNET_RELEASE%
 )
 
 echo [3/6] Download helper selection...
@@ -64,15 +64,15 @@ if not defined DL_MODE (
 )
 
 if not defined DL_MODE (
-  echo [ERROR] No downloader found (powershell/certutil/bitsadmin).
+  echo [ERROR] No downloader found: powershell/certutil/bitsadmin.
   echo         Manual path:
-  echo         1) Download installers in browser:
+  echo         - Download installers in browser:
   echo            - %DOTNET_URL%
   echo            - fallback: %DOTNET_URL_FALLBACK%
   echo            - %PS_URL%
-  echo         2) Put them in:
+  echo         - Put them in:
   echo            "%WORK%"
-  echo         3) Re-run this script.
+  echo         - Re-run this script.
   goto :end
 )
 echo       Using: %DL_MODE%
@@ -132,7 +132,7 @@ if not defined DOTNET_RELEASE set "DOTNET_RELEASE=0"
 echo.
 echo Result:
 if %DOTNET_RELEASE% GEQ 378389 (
-  echo   [OK] .NET 4.5+ detected (Release=%DOTNET_RELEASE%).
+  echo   [OK] .NET 4.5+ detected. Release=%DOTNET_RELEASE%
 ) else (
   echo   [WARN] .NET 4.5+ still not detected.
 )
@@ -152,11 +152,11 @@ set "OUT=%~2"
 if exist "%OUT%" del /f /q "%OUT%" >nul 2>&1
 
 if "%DL_MODE%"=="powershell" (
-  powershell -NoProfile -ExecutionPolicy Bypass -Command "try { [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12; Invoke-WebRequest -Uri '%URL%' -OutFile '%OUT%' -UseBasicParsing } catch { exit 1 }"
+  powershell -NoProfile -ExecutionPolicy Bypass -Command "Invoke-WebRequest -Uri '%URL%' -OutFile '%OUT%' -UseBasicParsing"
   goto :eof
 )
 if "%DL_MODE%"=="pwsh" (
-  pwsh -NoProfile -Command "try { Invoke-WebRequest -Uri '%URL%' -OutFile '%OUT%' } catch { exit 1 }"
+  pwsh -NoProfile -Command "Invoke-WebRequest -Uri '%URL%' -OutFile '%OUT%'"
   goto :eof
 )
 if "%DL_MODE%"=="certutil" (
