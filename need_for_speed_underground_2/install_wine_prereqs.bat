@@ -4,16 +4,23 @@ title Wine prereqs installer (cmd-only)
 
 cd /d "%~dp0"
 
+set "FETCHPS=%~dp0wine_fetch.ps1"
+
 echo.
 echo ========================================
 echo  Wine prerequisites installer
 echo ========================================
 echo  Installs if missing:
-echo    - .NET Framework 4.5+  (Release >= 378389)
-echo    - PowerShell (pwsh MSI)
-echo    - 7-Zip command line (7z.exe)
+echo    - .NET Framework 4.5+  Release ge 378389
+echo    - PowerShell pwsh MSI
+echo    - 7-Zip command line 7z.exe
 echo ========================================
 echo.
+if not exist "%FETCHPS%" (
+  echo [WARN] Missing "%FETCHPS%"
+  echo        Copy wine_fetch.ps1 next to this .bat for reliable HTTPS downloads in Wine.
+  echo.
+)
 
 set "WORK=%~dp0_wine_setup_downloads"
 if not exist "%WORK%" mkdir "%WORK%"
@@ -125,7 +132,11 @@ if "%HAVE_PS%"=="0" (
   echo [5/7] Installing PowerShell %PS_VER%...
   echo       [DL] PowerShell MSI from GitHub releases (official packages)
   call :download "%PS_URL%" "%PS_MSI%"
-  if exist "%PS_MSI%" (for %%A in ("%PS_MSI%") do echo       [DL] PowerShell MSI size: %%~zA bytes) else echo       [DL] PowerShell MSI missing.
+  if exist "%PS_MSI%" (
+    for %%A in ("%PS_MSI%") do echo       [DL] PowerShell MSI size: %%~zA bytes
+  ) else (
+    echo       [DL] PowerShell MSI missing.
+  )
   if not exist "%PS_MSI%" (
     echo [ERROR] Failed to download PowerShell MSI.
     goto :verify
@@ -157,7 +168,9 @@ if "%HAVE_7Z%"=="1" (
 ) else (
   echo       7-Zip not found. Installing from www.7-zip.org only...
   call :fetch_7zip
-  if exist "%ZIP_EXE%" (for %%A in ("%ZIP_EXE%") do echo       [DL] 7-Zip installer ready, size %%~zA bytes)
+  if exist "%ZIP_EXE%" (
+    for %%A in ("%ZIP_EXE%") do echo       [DL] 7-Zip installer ready, size %%~zA bytes
+  )
   if exist "%ZIP_EXE%" (
     echo       [7Z] Running silent install...
     "%ZIP_EXE%" /S
@@ -251,49 +264,75 @@ goto :eof
 :download
 set "URL=%~1"
 set "OUT=%~2"
-echo       [DL] mode=%DL_MODE%
+set "DL_OK=0"
+echo       [DL] DL_MODE=%DL_MODE%
 echo       [DL] out=%OUT%
+
 if exist "%OUT%" del /f /q "%OUT%" >nul 2>&1
 
-if "%DL_MODE%"=="curl" (
-  curl.exe -sSL -L --connect-timeout 30 --max-time 600 -o "%OUT%" "%URL%"
-  set "DL_EC=!ERRORLEVEL!"
-  if not "!DL_EC!"=="0" (
-    echo       [DL] curl.exe exit !DL_EC!, retrying as curl...
-    curl -sSL -L --connect-timeout 30 --max-time 600 -o "%OUT%" "%URL%"
-    set "DL_EC=!ERRORLEVEL!"
-  )
-  echo       [DL] curl final exit !DL_EC!
-  goto :dl_done
-)
-if "%DL_MODE%"=="powershell" (
-  powershell -NoProfile -ExecutionPolicy Bypass -Command "Invoke-WebRequest -Uri '%URL%' -OutFile '%OUT%' -UseBasicParsing"
-  set "DL_EC=!ERRORLEVEL!"
-  echo       [DL] powershell exit !DL_EC!
-  goto :dl_done
-)
-if "%DL_MODE%"=="pwsh" (
-  pwsh -NoProfile -Command "Invoke-WebRequest -Uri '%URL%' -OutFile '%OUT%'"
-  set "DL_EC=!ERRORLEVEL!"
-  echo       [DL] pwsh exit !DL_EC!
-  goto :dl_done
-)
-if "%DL_MODE%"=="certutil" (
-  echo       [DL] certutil: may fail on HTTPS redirects under Wine.
-  certutil -urlcache -split -f "%URL%" "%OUT%"
-  set "DL_EC=!ERRORLEVEL!"
-  echo       [DL] certutil exit !DL_EC!
-  goto :dl_done
-)
-if "%DL_MODE%"=="bitsadmin" (
-  bitsadmin /transfer dljob /download /priority foreground "%URL%" "%OUT%"
-  set "DL_EC=!ERRORLEVEL!"
-  echo       [DL] bitsadmin exit !DL_EC!
-  goto :dl_done
-)
-echo       [DL] unknown DL_MODE
+where curl.exe >nul 2>&1
+if errorlevel 1 where curl >nul 2>&1
+if errorlevel 1 goto :dl_try_ps1
+echo       [DL] try curl -L ...
+curl.exe -sSL -L --connect-timeout 30 --max-time 600 -o "%OUT%" "%URL%"
+if errorlevel 1 curl -sSL -L --connect-timeout 30 --max-time 600 -o "%OUT%" "%URL%"
+call :dl_check_ok "%OUT%"
+if "!DL_OK!"=="1" goto :dl_done
+
+:dl_try_ps1
+if "!DL_OK!"=="0" if exist "%OUT%" del /f /q "%OUT%" >nul 2>&1
+if not exist "%FETCHPS%" goto :dl_try_cert
+where powershell.exe >nul 2>&1
+if errorlevel 1 goto :dl_try_pwsh_file
+echo       [DL] try powershell -File wine_fetch.ps1 WebClient...
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File "%FETCHPS%" -Url "!URL!" -Out "!OUT!"
+call :dl_check_ok "%OUT%"
+if "!DL_OK!"=="1" goto :dl_done
+
+:dl_try_pwsh_file
+if "!DL_OK!"=="0" if exist "%OUT%" del /f /q "%OUT%" >nul 2>&1
+if not exist "%FETCHPS%" goto :dl_try_cert
+where pwsh.exe >nul 2>&1
+if errorlevel 1 goto :dl_try_cert
+echo       [DL] try pwsh -File wine_fetch.ps1 WebClient...
+pwsh.exe -NoProfile -File "%FETCHPS%" -Url "!URL!" -Out "!OUT!"
+call :dl_check_ok "%OUT%"
+if "!DL_OK!"=="1" goto :dl_done
+
+:dl_try_cert
+if "!DL_OK!"=="0" if exist "%OUT%" del /f /q "%OUT%" >nul 2>&1
+where certutil.exe >nul 2>&1
+if errorlevel 1 goto :dl_try_bits
+echo       [DL] try certutil...
+certutil.exe -urlcache -split -f "%URL%" "%OUT%"
+call :dl_check_ok "%OUT%"
+if "!DL_OK!"=="1" goto :dl_done
+
+:dl_try_bits
+if "!DL_OK!"=="0" if exist "%OUT%" del /f /q "%OUT%" >nul 2>&1
+where bitsadmin.exe >nul 2>&1
+if errorlevel 1 goto :dl_done_fail
+echo       [DL] try bitsadmin...
+bitsadmin.exe /transfer dljob /download /priority foreground "%URL%" "%OUT%"
+call :dl_check_ok "%OUT%"
+if "!DL_OK!"=="1" goto :dl_done
+
+:dl_done_fail
+if "!DL_OK!"=="0" echo       [DL] all download attempts failed or zero-byte file
+
 :dl_done
-if exist "%OUT%" (for %%A in ("%OUT%") do echo       [DL] saved %%~zA bytes) else echo       [DL] no file written
+if exist "%OUT%" goto :dl_show_size
+echo       [DL] no file written
+goto :eof
+:dl_show_size
+for %%A in ("%OUT%") do echo       [DL] saved %%~zA bytes
+goto :eof
+
+:dl_check_ok
+set "CHK=%~1"
+set "DL_OK=0"
+if not exist "%CHK%" goto :eof
+for %%S in ("%CHK%") do if %%~zS GTR 0 set "DL_OK=1"
 goto :eof
 
 :end
