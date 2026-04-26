@@ -1,14 +1,21 @@
 @echo off
 setlocal EnableExtensions EnableDelayedExpansion
-title Downloads via certutil
+title Downloads: curl.se bootstrap + certutil + VBS
 
-rem Order: write test on WORK, then ping 8.8.8.8, then certutil downloads. Needs certutil.exe on PATH.
+rem Step 0: optional official curl from https://curl.se/windows/ ^(win64-mingw zip^). Then write test, ping, downloads. curl used first when on PATH.
 
 cd /d "%~dp0"
 
+set "SCRIPTDIR=%~dp0"
+set "VBS=%SCRIPTDIR%wine_download.vbs"
 set "WORK=%~dp0_wine_setup_downloads"
 set "LOG=%WORK%\certutil_download.log"
 if not exist "%WORK%" mkdir "%WORK%"
+
+rem Official curl for Windows ^(curl.se^); second URL is older build if first is removed.
+set "CURL_URL_1=https://curl.se/windows/dl-8.19.0_8/curl-8.19.0_8-win64-mingw.zip"
+set "CURL_URL_2=https://curl.se/windows/dl-8.12.1_3/curl-8.12.1_3-win64-mingw.zip"
+set "CURL_ZIP_MIN=400000"
 
 set "DOTNET_URL=https://go.microsoft.com/fwlink/?linkid=2088631"
 set "DOTNET_URL_FALLBACK=https://download.microsoft.com/download/b/a/4/ba4a7e71-2906-4b2d-a0e1-80cf16844f5f/dotNetFx45_Full_setup.exe"
@@ -18,6 +25,8 @@ set "ZIP_URL_1=https://www.7-zip.org/a/7z2409-x64.exe"
 set "ZIP_URL_2=https://www.7-zip.org/a/7z2408-x64.exe"
 set "ZIP_URL_3=https://www.7-zip.org/a/7z2301-x64.exe"
 set "ZIP_MIN=250000"
+
+call :bootstrap_curl_official
 
 echo.
 echo === 1^) Write test: can we create files in WORK? ===
@@ -39,6 +48,7 @@ del /f /q "%LOG%" 2>nul
 call :log "START %DATE% %TIME%"
 call :log "WORK=%WORK%"
 call :log "Write test: create, append, delete in WORK succeeded."
+call :log "Step 0 already ran: official curl bootstrap from curl.se ^(see console if this log was cleared^)."
 
 echo.
 echo === 2^) Internet test: ping 8.8.8.8 ===
@@ -61,7 +71,13 @@ echo certutil.exe not found in PATH.
 call :log "ERROR: certutil.exe not in PATH"
 goto :end_fail
 :have_certutil
-call :log "Each file uses: certutil -v -urlcache -f URL outfile"
+set "HACURL=0"
+where curl.exe >nul 2>&1
+if not errorlevel 1 set "HACURL=1"
+if "%HACURL%"=="0" where curl >nul 2>&1
+if not errorlevel 1 set "HACURL=1"
+if "%HACURL%"=="1" call :log "curl on PATH - will try curl first for each file."
+if "%HACURL%"=="0" call :log "No curl on PATH - certutil then VBS."
 
 call :download "%DOTNET_URL%" "%WORK%\01_dotnet_fwlink.exe" dotnet_fwlink %DOTNET_MIN%
 call :download "%DOTNET_URL_FALLBACK%" "%WORK%\02_dotnet_full.exe" dotnet_full %DOTNET_MIN%
@@ -99,6 +115,57 @@ pause
 endlocal
 exit /b 0
 
+:bootstrap_curl_official
+where curl.exe >nul 2>&1
+if not errorlevel 1 goto :bootstrap_curl_skip
+where curl >nul 2>&1
+if not errorlevel 1 goto :bootstrap_curl_skip
+echo.
+echo === 0^) Official curl from curl.se ===
+echo     If this fails, keep wine_download.vbs next to this .bat and check internet.
+set "CURLZIP=%WORK%\curl_official_win64.zip"
+set "CURLX=%WORK%\curl_official_extract"
+if exist "%CURLZIP%" del /f /q "%CURLZIP%" >nul 2>&1
+if exist "%CURLX%" rd /s /q "%CURLX%" >nul 2>&1
+mkdir "%CURLX%" 2>nul
+set "CURL_GOT=0"
+for %%U in ("%CURL_URL_1%" "%CURL_URL_2%") do if "!CURL_GOT!"=="0" call :fetch_official_curl_zip "%%~U"
+if "!CURL_GOT!"=="0" echo Bootstrap FAIL: could not download curl zip from curl.se
+if "!CURL_GOT!"=="0" goto :bootstrap_curl_skip
+call :filebytes "%CURLZIP%" CZS
+if !CZS! LSS %CURL_ZIP_MIN% echo Bootstrap FAIL: zip too small. & goto :bootstrap_curl_skip
+where tar >nul 2>&1
+if errorlevel 1 echo Bootstrap FAIL: tar.exe not found - unpack "%CURLZIP%" by hand into "%CURLX%" and add bin to PATH. & goto :bootstrap_curl_skip
+echo Extracting with tar...
+tar -xf "%CURLZIP%" -C "%CURLX%"
+if errorlevel 1 echo Bootstrap FAIL: tar extract error. & goto :bootstrap_curl_skip
+set "CF="
+for /f "delims=" %%G in ('dir /b /ad "%CURLX%" 2^>nul') do set "CF=%%G"
+if "!CF!"=="" echo Bootstrap FAIL: no folder after extract. & goto :bootstrap_curl_skip
+if not exist "%CURLX%\!CF!\bin\curl.exe" echo Bootstrap FAIL: curl.exe not in expected bin folder. & goto :bootstrap_curl_skip
+set "PATH=%CURLX%\!CF!\bin;%PATH%"
+echo OK: curl.exe from curl.se is on PATH for this session:
+where curl.exe 2>nul
+where curl 2>nul
+:bootstrap_curl_skip
+goto :eof
+
+:fetch_official_curl_zip
+if exist "%CURLZIP%" del /f /q "%CURLZIP%" >nul 2>&1
+echo Download: %~1
+if exist "%VBS%" cscript.exe //nologo "%VBS%" "%~1" "%CURLZIP%" >nul 2>&1
+call :filebytes "%CURLZIP%" Z1
+if !Z1! GEQ %CURL_ZIP_MIN% set "CURL_GOT=1"
+if "!CURL_GOT!"=="1" goto :eof
+if exist "%CURLZIP%" del /f /q "%CURLZIP%" >nul 2>&1
+where certutil.exe >nul 2>&1
+if errorlevel 1 goto :eof
+echo Retry same URL with certutil...
+certutil.exe -urlcache -split -f "%~1" "%CURLZIP%" >nul 2>&1
+call :filebytes "%CURLZIP%" Z2
+if !Z2! GEQ %CURL_ZIP_MIN% set "CURL_GOT=1"
+goto :eof
+
 :download
 set "_U=%~1"
 set "_O=%~2"
@@ -110,13 +177,58 @@ call :log "OUT=%_O%"
 if exist "%_O%" del /f /q "%_O%" >nul 2>&1
 echo.
 echo Downloading %_N% ...
-certutil.exe -v -urlcache -f "!_U!" "!_O!" >>"%LOG%" 2>&1
-set "_RC=!ERRORLEVEL!"
 set "_Z=0"
-if exist "!_O!" for %%A in ("!_O!") do set "_Z=%%~zA"
-call :log "certutil exit !_RC! size=!_Z!"
-if !_Z! GEQ !_M! call :log "PASS %_N%"
-if !_Z! LSS !_M! call :log "FAIL %_N% need !_M! bytes"
+call :try_curl_get "!_U!" "!_O!"
+call :filebytes "!_O!" _Z
+call :log "after curl size=!_Z!"
+if !_Z! LSS !_M! goto :after_curl_fail
+call :log "PASS %_N% curl"
+goto :eof
+:after_curl_fail
+if exist "!_O!" del /f /q "!_O!" >nul 2>&1
+set "_Z=0"
+set "CLOG=%WORK%\_certutil_last.txt"
+del /f /q "%CLOG%" 2>nul
+call :log "TRY certutil -v -urlcache -split -f URL OUT"
+certutil.exe -v -urlcache -split -f "!_U!" "!_O!" >"%CLOG%" 2>&1
+set "_RC=!ERRORLEVEL!"
+type "%CLOG%" >>"%LOG%"
+call :log "certutil exit !_RC!"
+call :filebytes "!_O!" _Z
+call :log "after certutil size=!_Z!"
+if !_Z! LSS !_M! goto :dl_vbs
+call :log "PASS %_N% certutil"
+goto :eof
+
+:try_curl_get
+where curl.exe >nul 2>&1
+if errorlevel 1 where curl >nul 2>&1
+if errorlevel 1 goto :eof
+curl.exe -fSL --connect-timeout 30 --max-time 600 -o "%~2" "%~1" >>"%LOG%" 2>&1
+if errorlevel 1 curl -fSL --connect-timeout 30 --max-time 600 -o "%~2" "%~1" >>"%LOG%" 2>&1
+goto :eof
+
+:dl_vbs
+call :log "certutil empty or tiny ^(common on Wine^); TRY cscript wine_download.vbs"
+if exist "!_O!" del /f /q "!_O!" >nul 2>&1
+if not exist "%VBS%" call :log "SKIP vbs: put wine_download.vbs next to this .bat" & goto :dl_endfail
+where cscript.exe >nul 2>&1
+if errorlevel 1 call :log "SKIP vbs: cscript not in PATH" & goto :dl_endfail
+cscript.exe //nologo "%VBS%" "!_U!" "!_O!" >>"%LOG%" 2>&1
+call :filebytes "!_O!" _Z
+call :log "after vbs size=!_Z!"
+if !_Z! LSS !_M! goto :dl_endfail
+call :log "PASS %_N% vbs"
+goto :eof
+
+:dl_endfail
+call :log "FAIL %_N% need !_M! bytes last size=!_Z!"
+goto :eof
+
+:filebytes
+set "%~2=0"
+if not exist "%~1" goto :eof
+for %%A in ("%~1") do set "%~2=%%~zA"
 goto :eof
 
 :log
