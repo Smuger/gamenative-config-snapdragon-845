@@ -11,7 +11,13 @@ set "VBS=%SCRIPTDIR%wine_download.vbs"
 set "WORK=%~dp0_wine_setup_downloads"
 set "LOG=%WORK%\certutil_download.log"
 if not exist "%WORK%" mkdir "%WORK%"
-call :ensure_vbs
+if not exist "%VBS%" (
+  echo ERROR: Missing "%VBS%"
+  echo Copy wine_download.vbs from the repo next to install_wine_prereqs.bat and run again.
+  pause
+  endlocal
+  exit /b 1
+)
 
 rem Official curl for Windows ^(curl.se^); second URL is older build if first is removed.
 set "CURL_URL_1=https://curl.se/windows/dl-8.19.0_8/curl-8.19.0_8-win64-mingw.zip"
@@ -115,56 +121,6 @@ exit /b 1
 pause
 endlocal
 exit /b 0
-
-:ensure_vbs
-if exist "%VBS%" goto :eof
-echo Creating missing wine_download.vbs at:
-echo   "%VBS%"
-> "%VBS%" echo ' Auto-created downloader helper for Wine.
->>"%VBS%" echo If WScript.Arguments.Count ^<^> 2 Then
->>"%VBS%" echo   WScript.StdErr.WriteLine "usage: wine_download.vbs URL outfile"
->>"%VBS%" echo   WScript.Quit 1
->>"%VBS%" echo End If
->>"%VBS%" echo url = WScript.Arguments(0)
->>"%VBS%" echo path = WScript.Arguments(1)
->>"%VBS%" echo Set fso = CreateObject("Scripting.FileSystemObject")
->>"%VBS%" echo folder = fso.GetParentFolderName(path)
->>"%VBS%" echo If Not fso.FolderExists(folder) Then fso.CreateFolder folder
->>"%VBS%" echo Set http = CreateObject("WinHttp.WinHttpRequest.5.1")
->>"%VBS%" echo http.Open "GET", url, False
->>"%VBS%" echo http.SetTimeouts 45000, 45000, 600000, 600000
->>"%VBS%" echo http.SetRequestHeader "User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"
->>"%VBS%" echo http.SetRequestHeader "Accept", "*/*"
->>"%VBS%" echo On Error Resume Next
->>"%VBS%" echo http.Send
->>"%VBS%" echo If Err.Number ^<^> 0 Then
->>"%VBS%" echo   WScript.StdErr.WriteLine "Send error: " ^& Err.Description
->>"%VBS%" echo   WScript.Quit 1
->>"%VBS%" echo End If
->>"%VBS%" echo On Error GoTo 0
->>"%VBS%" echo status = http.Status
->>"%VBS%" echo If status ^< 200 Or status ^>= 300 Then
->>"%VBS%" echo   WScript.StdErr.WriteLine "HTTP status: " ^& status
->>"%VBS%" echo   WScript.Quit 1
->>"%VBS%" echo End If
->>"%VBS%" echo Set stream = CreateObject("ADODB.Stream")
->>"%VBS%" echo stream.Type = 1
->>"%VBS%" echo stream.Open
->>"%VBS%" echo stream.Write http.ResponseBody
->>"%VBS%" echo stream.SaveToFile path, 2
->>"%VBS%" echo stream.Close
->>"%VBS%" echo If Not fso.FileExists(path) Then
->>"%VBS%" echo   WScript.StdErr.WriteLine "file missing after save"
->>"%VBS%" echo   WScript.Quit 1
->>"%VBS%" echo End If
->>"%VBS%" echo If fso.GetFile(path).Size ^< 1 Then
->>"%VBS%" echo   WScript.StdErr.WriteLine "empty file"
->>"%VBS%" echo   WScript.Quit 1
->>"%VBS%" echo End If
->>"%VBS%" echo WScript.Quit 0
-if exist "%VBS%" echo OK: wine_download.vbs was created.
-if not exist "%VBS%" echo WARN: could not create wine_download.vbs automatically.
-goto :eof
 
 :bootstrap_curl_official
 where curl.exe >nul 2>&1
@@ -272,9 +228,26 @@ if exist "!_O!" del /f /q "!_O!" >nul 2>&1
 if not exist "%VBS%" call :log "SKIP vbs: put wine_download.vbs next to this .bat" & goto :dl_endfail
 where cscript.exe >nul 2>&1
 if errorlevel 1 call :log "SKIP vbs: cscript not in PATH" & goto :dl_endfail
-cscript.exe //nologo "%VBS%" "!_U!" "!_O!" >>"%LOG%" 2>&1
+set "VBSOUT=%WORK%\_cscript_last.txt"
+del /f /q "%VBSOUT%" 2>nul
+call :log "VBS=%VBS%"
+cscript.exe //nologo "%VBS%" "!_U!" "!_O!" >"%VBSOUT%" 2>&1
 set "_VRC=!ERRORLEVEL!"
-call :log "cscript exit !_VRC!"
+if exist "%VBSOUT%" (
+  call :log "--- cscript stdout/stderr ---"
+  type "%VBSOUT%" >>"%LOG%"
+) else (
+  call :log "(no _cscript_last.txt capture file)"
+)
+set "DBGVBS="
+for %%I in ("!_O!") do set "DBGVBS=%%~dpI_wine_vbs_debug.txt"
+if exist "!DBGVBS!" (
+  call :log "--- _wine_vbs_debug.txt ---"
+  type "!DBGVBS!" >>"%LOG%"
+) else (
+  call :log "no _wine_vbs_debug.txt ^(deploy repo wine_download.vbs with debug support^)"
+)
+call :log "cscript exit !_VRC! ^(Wine may lie; size below is truth^)"
 call :filebytes "!_O!" _Z
 call :log "after vbs size=!_Z!"
 if !_Z! LSS !_M! goto :dl_endfail

@@ -138,10 +138,11 @@ if errorlevel 1 (
 )
 
 set "ZIPCMD="
+set "PF86=%ProgramFiles(x86)%"
 where 7z >nul 2>&1 && set "ZIPCMD=7z"
-if not defined ZIPCMD (
-  where 7za >nul 2>&1 && set "ZIPCMD=7za"
-)
+if not defined ZIPCMD where 7za >nul 2>&1 && set "ZIPCMD=7za"
+if not defined ZIPCMD if exist "%ProgramFiles%\7-Zip\7z.exe" set "ZIPCMD=%ProgramFiles%\7-Zip\7z.exe"
+if not defined ZIPCMD if exist "%PF86%\7-Zip\7z.exe" set "ZIPCMD=%PF86%\7-Zip\7z.exe"
 if defined ZIPCMD (
   echo       Trying !ZIPCMD! ...
   if exist "%MERGE%" rd /s /q "%MERGE%" 2>nul
