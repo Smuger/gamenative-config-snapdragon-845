@@ -26,10 +26,13 @@ set "PS_VER=7.6.1"
 set "PS_URL=https://github.com/PowerShell/PowerShell/releases/download/v%PS_VER%/PowerShell-%PS_VER%-win-x64.msi"
 set "PS_MSI=%WORK%\PowerShell-%PS_VER%-win-x64.msi"
 
-set "ZIP_URL=https://www.7-zip.org/a/7z2409-x64.exe"
-set "ZIP_URL_FALLBACK=https://www.7-zip.org/a/7z2301-x64.exe"
 set "ZIP_EXE=%WORK%\7zip_setup_x64.exe"
+set "ZIP_MIN=250000"
 set "PF86=%ProgramFiles(x86)%"
+REM 7-Zip: official site only (https://www.7-zip.org/). Try newest x64 SFX first, then older builds.
+set "ZIP_URL_1=https://www.7-zip.org/a/7z2409-x64.exe"
+set "ZIP_URL_2=https://www.7-zip.org/a/7z2408-x64.exe"
+set "ZIP_URL_3=https://www.7-zip.org/a/7z2301-x64.exe"
 
 set "HAVE_PS=0"
 set "HAVE_DOTNET=0"
@@ -59,7 +62,9 @@ if %DOTNET_RELEASE% GEQ 378389 (
 
 echo [3/7] Download helper selection...
 set "DL_MODE="
-where powershell.exe >nul 2>&1 && set "DL_MODE=powershell"
+where curl.exe >nul 2>&1 && set "DL_MODE=curl"
+if not defined DL_MODE where curl >nul 2>&1 && set "DL_MODE=curl"
+if not defined DL_MODE where powershell.exe >nul 2>&1 && set "DL_MODE=powershell"
 if not defined DL_MODE (
   where pwsh.exe >nul 2>&1 && set "DL_MODE=pwsh"
 )
@@ -71,29 +76,34 @@ if not defined DL_MODE (
 )
 
 if not defined DL_MODE (
-  echo [ERROR] No downloader found: powershell/certutil/bitsadmin.
+  echo [ERROR] No downloader found: curl/powershell/pwsh/certutil/bitsadmin.
   echo         Manual path:
   echo         - Download installers in browser:
   echo            - %DOTNET_URL%
   echo            - fallback: %DOTNET_URL_FALLBACK%
   echo            - %PS_URL%
-  echo            - %ZIP_URL%
-  echo            - fallback: %ZIP_URL_FALLBACK%
+  echo            - 7-Zip x64: https://www.7-zip.org/download.html
   echo         - Put them in:
   echo            "%WORK%"
   echo         - Re-run this script.
   goto :end
 )
-echo       Using: %DL_MODE%
+echo       Downloader selected: %DL_MODE%
+echo       Download folder: "%WORK%"
 
 if "%HAVE_DOTNET%"=="0" (
   echo [4/7] Installing .NET Framework 4.5+...
+  echo       [DL] .NET primary: Microsoft fwlink
   call :download "%DOTNET_URL%" "%DOTNET_EXE%"
   for %%A in ("%DOTNET_EXE%") do set "DOTNET_SIZE=%%~zA"
   if not exist "%DOTNET_EXE%" set "DOTNET_SIZE=0"
-  if "%DOTNET_SIZE%"=="0" (
-    echo       Primary URL failed, trying fallback URL...
+  echo       [DL] .NET file size after primary: !DOTNET_SIZE! bytes
+  if "!DOTNET_SIZE!"=="0" (
+    echo       [DL] .NET primary empty or missing, trying Microsoft direct download.microsoft.com...
     call :download "%DOTNET_URL_FALLBACK%" "%DOTNET_EXE%"
+    for %%A in ("%DOTNET_EXE%") do set "DOTNET_SIZE=%%~zA"
+    if not exist "%DOTNET_EXE%" set "DOTNET_SIZE=0"
+    echo       [DL] .NET file size after fallback: !DOTNET_SIZE! bytes
   )
   if not exist "%DOTNET_EXE%" (
     echo [ERROR] Failed to download .NET installer.
@@ -113,7 +123,9 @@ if "%HAVE_DOTNET%"=="0" (
 
 if "%HAVE_PS%"=="0" (
   echo [5/7] Installing PowerShell %PS_VER%...
+  echo       [DL] PowerShell MSI from GitHub releases (official packages)
   call :download "%PS_URL%" "%PS_MSI%"
+  if exist "%PS_MSI%" (for %%A in ("%PS_MSI%") do echo       [DL] PowerShell MSI size: %%~zA bytes) else echo       [DL] PowerShell MSI missing.
   if not exist "%PS_MSI%" (
     echo [ERROR] Failed to download PowerShell MSI.
     goto :verify
@@ -143,13 +155,11 @@ if "%HAVE_7Z%"=="0" if exist "%PF86%\7-Zip\7z.exe" (
 if "%HAVE_7Z%"=="1" (
   echo       7-Zip already present.
 ) else (
-  echo       7-Zip not found. Installing...
-  call :download "%ZIP_URL%" "%ZIP_EXE%"
-  if not exist "%ZIP_EXE%" (
-    echo       Primary URL failed, trying fallback URL...
-    call :download "%ZIP_URL_FALLBACK%" "%ZIP_EXE%"
-  )
+  echo       7-Zip not found. Installing from www.7-zip.org only...
+  call :fetch_7zip
+  if exist "%ZIP_EXE%" (for %%A in ("%ZIP_EXE%") do echo       [DL] 7-Zip installer ready, size %%~zA bytes)
   if exist "%ZIP_EXE%" (
+    echo       [7Z] Running silent install...
     "%ZIP_EXE%" /S
     if exist "%ProgramFiles%\7-Zip\7z.exe" set "PATH=%ProgramFiles%\7-Zip;%PATH%"
     if exist "%PF86%\7-Zip\7z.exe" set "PATH=%PF86%\7-Zip;%PATH%"
@@ -161,7 +171,8 @@ if "%HAVE_7Z%"=="1" (
       echo [WARN] 7-Zip installer ran but 7z.exe still not found.
     )
   ) else (
-    echo [WARN] Could not download 7-Zip installer.
+    echo [WARN] Could not download a valid 7-Zip installer.
+    echo       Save 7z*-x64.exe as: "%ZIP_EXE%" then re-run this script.
   )
 )
 
@@ -173,6 +184,8 @@ where pwsh.exe >nul 2>&1 && set "HAVE_PS=1"
 set "HAVE_7Z=0"
 where 7z.exe >nul 2>&1 && set "HAVE_7Z=1"
 where 7za.exe >nul 2>&1 && set "HAVE_7Z=1"
+if "%HAVE_7Z%"=="0" if exist "%ProgramFiles%\7-Zip\7z.exe" set "HAVE_7Z=1"
+if "%HAVE_7Z%"=="0" if exist "%PF86%\7-Zip\7z.exe" set "HAVE_7Z=1"
 set "DOTNET_RELEASE=0"
 for /f "tokens=3" %%R in ('reg query "HKLM\Software\Microsoft\NET Framework Setup\NDP\v4\Full" /v Release 2^>nul ^| find "Release"') do set "DOTNET_RELEASE=%%R"
 if not defined DOTNET_RELEASE set "DOTNET_RELEASE=0"
@@ -199,27 +212,88 @@ echo If either check is WARN under Wine, continue anyway:
 echo your merge script can still complete using manual Linux zip merge fallback.
 goto :end
 
+:fetch_7zip
+if exist "%ZIP_EXE%" del /f /q "%ZIP_EXE%" >nul 2>&1
+echo       [7Z] attempt 1/3 official build...
+call :download_try "%ZIP_URL_1%" "1"
+set "ZS=0"
+if exist "%ZIP_EXE%" for %%A in ("%ZIP_EXE%") do set "ZS=%%~zA"
+echo       [7Z] size=!ZS! min required=%ZIP_MIN%
+if "!ZS!" GEQ "%ZIP_MIN%" goto :fetch_7zip_ok
+if exist "%ZIP_EXE%" del /f /q "%ZIP_EXE%" >nul 2>&1
+echo       [7Z] attempt 2/3 official build...
+call :download_try "%ZIP_URL_2%" "2"
+set "ZS=0"
+if exist "%ZIP_EXE%" for %%A in ("%ZIP_EXE%") do set "ZS=%%~zA"
+echo       [7Z] size=!ZS! min required=%ZIP_MIN%
+if "!ZS!" GEQ "%ZIP_MIN%" goto :fetch_7zip_ok
+if exist "%ZIP_EXE%" del /f /q "%ZIP_EXE%" >nul 2>&1
+echo       [7Z] attempt 3/3 official build...
+call :download_try "%ZIP_URL_3%" "3"
+set "ZS=0"
+if exist "%ZIP_EXE%" for %%A in ("%ZIP_EXE%") do set "ZS=%%~zA"
+echo       [7Z] size=!ZS! min required=%ZIP_MIN%
+if "!ZS!" GEQ "%ZIP_MIN%" goto :fetch_7zip_ok
+if exist "%ZIP_EXE%" del /f /q "%ZIP_EXE%" >nul 2>&1
+echo       [7Z] all official download attempts failed or file too small.
+goto :eof
+:fetch_7zip_ok
+echo       [7Z] download OK.
+goto :eof
+
+:download_try
+set "TRY_URL=%~1"
+set "TRY_N=%~2"
+echo       [DL] try !TRY_N! url=!TRY_URL!
+call :download "!TRY_URL!" "%ZIP_EXE%"
+goto :eof
+
 :download
 set "URL=%~1"
 set "OUT=%~2"
+echo       [DL] mode=%DL_MODE%
+echo       [DL] out=%OUT%
 if exist "%OUT%" del /f /q "%OUT%" >nul 2>&1
 
+if "%DL_MODE%"=="curl" (
+  curl.exe -sSL -L --connect-timeout 30 --max-time 600 -o "%OUT%" "%URL%"
+  set "DL_EC=!ERRORLEVEL!"
+  if not "!DL_EC!"=="0" (
+    echo       [DL] curl.exe exit !DL_EC!, retrying as curl...
+    curl -sSL -L --connect-timeout 30 --max-time 600 -o "%OUT%" "%URL%"
+    set "DL_EC=!ERRORLEVEL!"
+  )
+  echo       [DL] curl final exit !DL_EC!
+  goto :dl_done
+)
 if "%DL_MODE%"=="powershell" (
   powershell -NoProfile -ExecutionPolicy Bypass -Command "Invoke-WebRequest -Uri '%URL%' -OutFile '%OUT%' -UseBasicParsing"
-  goto :eof
+  set "DL_EC=!ERRORLEVEL!"
+  echo       [DL] powershell exit !DL_EC!
+  goto :dl_done
 )
 if "%DL_MODE%"=="pwsh" (
   pwsh -NoProfile -Command "Invoke-WebRequest -Uri '%URL%' -OutFile '%OUT%'"
-  goto :eof
+  set "DL_EC=!ERRORLEVEL!"
+  echo       [DL] pwsh exit !DL_EC!
+  goto :dl_done
 )
 if "%DL_MODE%"=="certutil" (
+  echo       [DL] certutil: may fail on HTTPS redirects under Wine.
   certutil -urlcache -split -f "%URL%" "%OUT%"
-  goto :eof
+  set "DL_EC=!ERRORLEVEL!"
+  echo       [DL] certutil exit !DL_EC!
+  goto :dl_done
 )
 if "%DL_MODE%"=="bitsadmin" (
   bitsadmin /transfer dljob /download /priority foreground "%URL%" "%OUT%"
-  goto :eof
+  set "DL_EC=!ERRORLEVEL!"
+  echo       [DL] bitsadmin exit !DL_EC!
+  goto :dl_done
 )
+echo       [DL] unknown DL_MODE
+:dl_done
+if exist "%OUT%" (for %%A in ("%OUT%") do echo       [DL] saved %%~zA bytes) else echo       [DL] no file written
 goto :eof
 
 :end
