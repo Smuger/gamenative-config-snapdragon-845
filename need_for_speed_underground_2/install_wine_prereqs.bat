@@ -2,7 +2,7 @@
 setlocal EnableExtensions EnableDelayedExpansion
 title Downloads via certutil
 
-rem Five files from Microsoft and 7-zip.org; only certutil -v -urlcache -f. Needs certutil.exe on PATH.
+rem Order: write test on WORK, then ping 8.8.8.8, then certutil downloads. Needs certutil.exe on PATH.
 
 cd /d "%~dp0"
 
@@ -19,15 +19,47 @@ set "ZIP_URL_2=https://www.7-zip.org/a/7z2408-x64.exe"
 set "ZIP_URL_3=https://www.7-zip.org/a/7z2301-x64.exe"
 set "ZIP_MIN=250000"
 
+echo.
+echo === 1^) Write test: can we create files in WORK? ===
+echo     "%WORK%"
+set "WT=%WORK%\_write_perm_test.tmp"
+if exist "%WT%" del /f /q "%WT%" >nul 2>&1
+copy /y nul "%WT%" >nul 2>&1
+if errorlevel 1 echo FAIL: could not create a file here. & goto :end_fail
+if not exist "%WT%" echo FAIL: file did not appear after create. & goto :end_fail
+echo ok>>"%WT%" 2>nul
+if errorlevel 1 echo FAIL: could not append to the test file. & del /f /q "%WT%" >nul 2>&1 & goto :end_fail
+for %%S in ("%WT%") do set "WTS=%%~zS"
+if "!WTS!" LSS "1" echo FAIL: test file is empty. & del /f /q "%WT%" >nul 2>&1 & goto :end_fail
+del /f /q "%WT%" >nul 2>&1
+if exist "%WT%" echo FAIL: could not delete the test file. & goto :end_fail
+echo OK: WORK folder is writable.
+
 del /f /q "%LOG%" 2>nul
 call :log "START %DATE% %TIME%"
 call :log "WORK=%WORK%"
+call :log "Write test: create, append, delete in WORK succeeded."
+
+echo.
+echo === 2^) Internet test: ping 8.8.8.8 ===
+set "PINGOUT=%WORK%\_ping_out.txt"
+del /f /q "%PINGOUT%" 2>nul
+ping -n 2 -w 4000 8.8.8.8 > "%PINGOUT%" 2>&1
+set "PINGRC=!ERRORLEVEL!"
+if not exist "%PINGOUT%" echo FAIL: could not save ping output into WORK. & goto :end_fail
+type "%PINGOUT%"
+type "%PINGOUT%" >>"%LOG%"
+call :log "ping -n 2 -w 4000 8.8.8.8 exit code !PINGRC!"
+del /f /q "%PINGOUT%" >nul 2>&1
+if "!PINGRC!"=="0" call :log "Internet check: ping OK."
+if not "!PINGRC!"=="0" call :log "Internet check: ping FAILED ^(no reply or error^)."
+if not "!PINGRC!"=="0" echo FAIL: ping did not succeed. Downloads will not be tried. & goto :end_fail
 
 where certutil.exe >nul 2>&1
 if not errorlevel 1 goto :have_certutil
 echo certutil.exe not found in PATH.
 call :log "ERROR: certutil.exe not in PATH"
-goto :end
+goto :end_fail
 :have_certutil
 call :log "Each file uses: certutil -v -urlcache -f URL outfile"
 
@@ -53,7 +85,16 @@ if not exist "%WORK%\05_7z2301_x64.exe" call :log "05 MISSING"
 call :log "DONE. Log: %LOG%"
 echo.
 echo Log: "%LOG%"
-:end
+goto :end_ok
+
+:end_fail
+echo.
+echo Stopped. If a log exists: "%LOG%"
+pause
+endlocal
+exit /b 1
+
+:end_ok
 pause
 endlocal
 exit /b 0
