@@ -2,13 +2,31 @@
 # nfsu2: two CD folders -> one install folder. Needs: robocopy (Windows), 7-Zip.
 $ErrorActionPreference = 'Stop'
 
+# Host output (Write-Host) often does not show when started from cmd.exe / Wine; use stdout.
 $here = $PSScriptRoot
+if (-not $here -and $MyInvocation.MyCommand.Path) {
+    $here = Split-Path -Parent $MyInvocation.MyCommand.Path
+}
 $log = Join-Path $here 'nfsu2_merge.log'
+try {
+    "$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss') setup.ps1 starting (folder=$here)" |
+        Out-File -LiteralPath $log -Encoding utf8 -Force
+}
+catch {
+    Write-Output "WARN: could not write log at $log — $($_.Exception.Message)"
+}
 
 function Write-Log([string] $Message) {
     $line = '{0} {1}' -f (Get-Date -Format 'yyyy-MM-dd HH:mm:ss'), $Message
-    Write-Host $line
-    Add-Content -LiteralPath $log -Value $line -Encoding utf8
+    Write-Output $line
+    Add-Content -LiteralPath $log -Value $line -Encoding utf8 -ErrorAction Stop
+}
+
+function Read-LinePrompt([string] $Question) {
+    Write-Output ''
+    Write-Output $Question
+    Write-Output 'Type the path and press Enter (blank lines are not allowed).'
+    Read-Host '>'
 }
 
 function Join-Here([string] $Path) {
@@ -24,12 +42,16 @@ function Require-Path([string] $Path) {
 
 try {
     Write-Log '--- start ---'
+    Write-Output ''
+    Write-Output '=== Interactive prompts (this window waits for each answer) ==='
+    Write-Output "Paths can be full or relative to: $here"
+    Write-Output ''
 
-    $curl = Require-Path (Join-Here (Read-Host 'curl.exe (path)'))
-    $sevenZip = Require-Path (Join-Here (Read-Host '7z.exe'))
-    $cd1 = Require-Path (Join-Here (Read-Host 'Disc 1 folder (game root; has compressed.zip)'))
-    $cd2 = Require-Path (Join-Here (Read-Host 'Disc 2 folder'))
-    $out = Join-Here (Read-Host 'Output folder (merged tree; created if missing)')
+    $curl = Require-Path (Join-Here (Read-LinePrompt '1/5 Full path to curl.exe'))
+    $sevenZip = Require-Path (Join-Here (Read-LinePrompt '2/5 Full path to 7z.exe'))
+    $cd1 = Require-Path (Join-Here (Read-LinePrompt '3/5 Disc 1 folder (game root; contains compressed.zip)'))
+    $cd2 = Require-Path (Join-Here (Read-LinePrompt '4/5 Disc 2 folder'))
+    $out = Join-Here (Read-LinePrompt '5/5 Output folder for merged install (created if missing)')
 
     $env:CURL_EXE = $curl
     $env:SEVENZIP_EXE = $sevenZip
