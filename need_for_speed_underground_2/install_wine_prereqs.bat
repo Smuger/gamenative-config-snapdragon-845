@@ -19,9 +19,11 @@ if not exist "%VBS%" (
   exit /b 1
 )
 
-rem Official curl for Windows ^(curl.se^); second URL is older build if first is removed.
+rem Official curl for Windows. Use latest.cgi first ^(tracks current zip name^); then pinned builds.
+set "CURL_URL_LATEST=https://curl.se/windows/latest.cgi?p=win64-mingw.zip"
 set "CURL_URL_1=https://curl.se/windows/dl-8.19.0_8/curl-8.19.0_8-win64-mingw.zip"
-set "CURL_URL_2=https://curl.se/windows/dl-8.12.1_3/curl-8.12.1_3-win64-mingw.zip"
+set "CURL_URL_2=https://curl.se/windows/dl-8.19.0_4/curl-8.19.0_4-win64-mingw.zip"
+set "CURL_URL_3=https://curl.se/windows/dl-8.12.1_3/curl-8.12.1_3-win64-mingw.zip"
 set "CURL_ZIP_MIN=400000"
 
 set "DOTNET_URL=https://go.microsoft.com/fwlink/?linkid=2088631"
@@ -136,7 +138,7 @@ if exist "%CURLZIP%" del /f /q "%CURLZIP%" >nul 2>&1
 if exist "%CURLX%" rd /s /q "%CURLX%" >nul 2>&1
 mkdir "%CURLX%" 2>nul
 set "CURL_GOT=0"
-for %%U in ("%CURL_URL_1%" "%CURL_URL_2%") do if "!CURL_GOT!"=="0" call :fetch_official_curl_zip "%%~U"
+for %%U in ("%CURL_URL_LATEST%" "%CURL_URL_1%" "%CURL_URL_2%" "%CURL_URL_3%") do if "!CURL_GOT!"=="0" call :fetch_official_curl_zip "%%~U"
 if "!CURL_GOT!"=="0" echo Bootstrap FAIL: could not download curl zip from curl.se
 if "!CURL_GOT!"=="0" goto :bootstrap_curl_skip
 call :filebytes "%CURLZIP%" CZS
@@ -160,6 +162,16 @@ goto :eof
 :fetch_official_curl_zip
 if exist "%CURLZIP%" del /f /q "%CURLZIP%" >nul 2>&1
 echo Download: %~1
+call :try_powershell_download "%~1" "%CURLZIP%"
+call :filebytes "%CURLZIP%" Z1
+if !Z1! GEQ %CURL_ZIP_MIN% set "CURL_GOT=1"
+if "!CURL_GOT!"=="1" goto :eof
+if exist "%CURLZIP%" del /f /q "%CURLZIP%" >nul 2>&1
+call :try_wget_download "%~1" "%CURLZIP%"
+call :filebytes "%CURLZIP%" ZW
+if !ZW! GEQ %CURL_ZIP_MIN% set "CURL_GOT=1"
+if "!CURL_GOT!"=="1" goto :eof
+if exist "%CURLZIP%" del /f /q "%CURLZIP%" >nul 2>&1
 if exist "%VBS%" cscript.exe //nologo "%VBS%" "%~1" "%CURLZIP%" >nul 2>&1
 call :filebytes "%CURLZIP%" Z1
 if !Z1! GEQ %CURL_ZIP_MIN% set "CURL_GOT=1"
@@ -171,6 +183,26 @@ echo Retry same URL with certutil...
 certutil.exe -urlcache -split -f "%~1" "%CURLZIP%" >nul 2>&1
 call :filebytes "%CURLZIP%" Z2
 if !Z2! GEQ %CURL_ZIP_MIN% set "CURL_GOT=1"
+goto :eof
+
+:try_powershell_download
+where powershell.exe >nul 2>&1
+if errorlevel 1 goto :eof
+set "PSDLURL=%~1"
+set "PSDLOUT=%~2"
+echo Trying PowerShell Invoke-WebRequest ^(TLS 1.2^)...
+powershell.exe -NoProfile -ExecutionPolicy Bypass -Command "[Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12; $ProgressPreference='SilentlyContinue'; Invoke-WebRequest -Uri $env:PSDLURL -OutFile $env:PSDLOUT -UseBasicParsing"
+set "PSDLURL="
+set "PSDLOUT="
+goto :eof
+
+:try_wget_download
+where wget.exe >nul 2>&1
+if errorlevel 1 where wget >nul 2>&1
+if errorlevel 1 goto :eof
+echo Trying wget...
+wget.exe -q --timeout=60 -O "%~2" "%~1"
+if errorlevel 1 wget -q --timeout=60 -O "%~2" "%~1"
 goto :eof
 
 :download
@@ -199,6 +231,15 @@ call :log "PASS %_N% curl"
 goto :eof
 :after_curl_fail
 if "!HAS_CURL!"=="0" call :log "curl not on PATH: skip curl for this job."
+if exist "!_O!" del /f /q "!_O!" >nul 2>&1
+set "_Z=0"
+call :try_powershell_download "!_U!" "!_O!"
+call :filebytes "!_O!" _Z
+call :log "after PowerShell Invoke-WebRequest size=!_Z!"
+if !_Z! GEQ !_M! (
+  call :log "PASS %_N% powershell"
+  goto :eof
+)
 if exist "!_O!" del /f /q "!_O!" >nul 2>&1
 set "_Z=0"
 set "CLOG=%WORK%\_certutil_last.txt"

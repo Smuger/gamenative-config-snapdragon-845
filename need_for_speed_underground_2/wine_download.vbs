@@ -62,15 +62,38 @@ Function TryWinHttp(dbgPath, url, path, ignoreSsl, ByRef sourceName, ByRef succe
     On Error GoTo 0
     Exit Function
   End If
-  http.Open "GET", url, False
-  http.SetTimeouts 60000, 60000, 600000, 600000
+  ' Schannel TLS: prefer TLS 1.1 + 1.2 (Wine often defaults to older protocol set)
+  http.Option(9) = &HA00
+  If Err.Number <> 0 Then
+    Dbg dbgPath, "WinHTTP Option(9) TLS: &H" & Hex(Err.Number) & " " & Err.Description
+    Err.Clear
+  End If
   http.Option(6) = True
-  If ignoreSsl Then http.Option(4) = &H3300
-  http.SetRequestHeader "User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"
+  If Err.Number <> 0 Then
+    Dbg dbgPath, "WinHTTP Option(6) redirect: &H" & Hex(Err.Number) & " " & Err.Description
+    Err.Clear
+  End If
+  If ignoreSsl Then
+    http.Option(4) = &H3300
+    If Err.Number <> 0 Then
+      Dbg dbgPath, "WinHTTP Option(4) SSL ignore unsupported, continuing: &H" & Hex(Err.Number) & " " & Err.Description
+      Err.Clear
+    End If
+  End If
+  http.Open "GET", url, False
+  If Err.Number <> 0 Then
+    TryWinHttp = "WinHTTP open: &H" & Hex(Err.Number) & " " & Err.Description
+    Dbg dbgPath, TryWinHttp
+    Err.Clear
+    On Error GoTo 0
+    Exit Function
+  End If
+  http.SetTimeouts 60000, 60000, 600000, 600000
+  http.SetRequestHeader "User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
   http.SetRequestHeader "Accept", "*/*"
   http.Send
   If Err.Number <> 0 Then
-    TryWinHttp = "WinHTTP send: " & Err.Description
+    TryWinHttp = "WinHTTP send: &H" & Hex(Err.Number) & " " & Err.Description
     Dbg dbgPath, TryWinHttp
     Err.Clear
     On Error GoTo 0
@@ -118,7 +141,7 @@ Function TryServerXml(dbgPath, url, path, ByRef sourceName, ByRef success)
   xhr.setRequestHeader "Accept", "*/*"
   xhr.send
   If Err.Number <> 0 Then
-    TryServerXml = "ServerXMLHTTP send: " & Err.Description
+    TryServerXml = "ServerXMLHTTP send: &H" & Hex(Err.Number) & " " & Err.Description
     Dbg dbgPath, TryServerXml
     Err.Clear
     On Error GoTo 0
@@ -145,13 +168,71 @@ Function TryServerXml(dbgPath, url, path, ByRef sourceName, ByRef success)
   success = True
 End Function
 
+' SXH_SERVER_CERT_IGNORE_* / ignore HTTPS cert problems (Wine Schannel quirks)
+Function TryServerXmlSslIgnore(dbgPath, url, path, ByRef sourceName, ByRef success)
+  Dim xhr, st, lb
+  TryServerXmlSslIgnore = ""
+  success = False
+  sourceName = ""
+  On Error Resume Next
+  Set xhr = CreateObject("MSXML2.ServerXMLHTTP.6.0")
+  If Err.Number <> 0 Then
+    TryServerXmlSslIgnore = "ServerXMLHTTP create: " & Err.Description
+    Dbg dbgPath, TryServerXmlSslIgnore
+    Err.Clear
+    On Error GoTo 0
+    Exit Function
+  End If
+  xhr.Open "GET", url, False
+  xhr.setTimeouts 60000, 60000, 600000, 600000
+  xhr.setRequestHeader "User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"
+  xhr.setRequestHeader "Accept", "*/*"
+  On Error Resume Next
+  xhr.setOption 2, 13056
+  If Err.Number <> 0 Then
+    Dbg dbgPath, "ServerXMLHTTP setOption(SSL ignore): &H" & Hex(Err.Number) & " " & Err.Description
+    Err.Clear
+  End If
+  xhr.send
+  If Err.Number <> 0 Then
+    TryServerXmlSslIgnore = "ServerXMLHTTP(ssl-ignore) send: &H" & Hex(Err.Number) & " " & Err.Description
+    Dbg dbgPath, TryServerXmlSslIgnore
+    Err.Clear
+    On Error GoTo 0
+    Exit Function
+  End If
+  On Error GoTo 0
+  st = xhr.status
+  If st < 200 Or st >= 300 Then
+    TryServerXmlSslIgnore = "ServerXMLHTTP(ssl-ignore) HTTP " & st
+    Dbg dbgPath, TryServerXmlSslIgnore
+    Exit Function
+  End If
+  lb = LenB(xhr.responseBody)
+  Dbg dbgPath, "ServerXMLHTTP(ssl-ignore) HTTP " & st & " LenB=" & lb
+  If lb < 1 Then
+    TryServerXmlSslIgnore = "ServerXMLHTTP(ssl-ignore) empty body"
+    Exit Function
+  End If
+  If Not SaveBytes(path, xhr.responseBody) Then
+    TryServerXmlSslIgnore = "ServerXMLHTTP(ssl-ignore) save failed"
+    Exit Function
+  End If
+  sourceName = "ServerXMLHTTP+ssl-ignore"
+  success = True
+End Function
+
 Function TryXmlHttp(dbgPath, url, path, ByRef sourceName, ByRef success)
   Dim xhr, st, lb
   TryXmlHttp = ""
   success = False
   sourceName = ""
   On Error Resume Next
-  Set xhr = CreateObject("MSXML2.XMLHTTP.6.0")
+  Set xhr = CreateObject("Microsoft.XMLHTTP")
+  If Err.Number <> 0 Then
+    Err.Clear
+    Set xhr = CreateObject("MSXML2.XMLHTTP.6.0")
+  End If
   If Err.Number <> 0 Then
     Err.Clear
     Set xhr = CreateObject("MSXML2.XMLHTTP.3.0")
@@ -168,7 +249,7 @@ Function TryXmlHttp(dbgPath, url, path, ByRef sourceName, ByRef success)
   xhr.setRequestHeader "Accept", "*/*"
   xhr.send
   If Err.Number <> 0 Then
-    TryXmlHttp = "XMLHTTP send: " & Err.Description
+    TryXmlHttp = "XMLHTTP send: &H" & Hex(Err.Number) & " " & Err.Description
     Dbg dbgPath, TryXmlHttp
     Err.Clear
     On Error GoTo 0
@@ -240,6 +321,12 @@ End If
 
 If Not ok Then
   errMsg = TryServerXml(dbgPath, url, outPath, source, ok)
+  If ok Then Dbg dbgPath, "OK " & source & " bytes=" & g_fso.GetFile(outPath).Size
+End If
+
+If Not ok Then
+  Dbg dbgPath, "retry ServerXMLHTTP cert ignore"
+  errMsg = TryServerXmlSslIgnore(dbgPath, url, outPath, source, ok)
   If ok Then Dbg dbgPath, "OK " & source & " bytes=" & g_fso.GetFile(outPath).Size
 End If
 
