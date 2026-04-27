@@ -1,7 +1,7 @@
 #Requires -Version 5.1
 # nfsu2: two CD folders -> one install folder. Needs: robocopy (Windows), 7-Zip.
 #
-# Paths: pass -CurlExe … -OutDir from setup.bat (required under Wine: cmd prompts, not Read-Host).
+# Paths from setup.bat must be relative to this script's folder only (curl, 7z, iso1, iso2, merged, …).
 # Or run this script directly and answer prompts (Windows console).
 param(
     [string] $CurlExe,
@@ -42,7 +42,9 @@ function Read-LinePrompt([string] $Question) {
 
 function Join-Here([string] $Path) {
     $Path = $Path.Trim().Trim('"')
-    if ([System.IO.Path]::IsPathRooted($Path)) { return $Path }
+    if ([System.IO.Path]::IsPathRooted($Path)) {
+        throw "Use a path relative to the folder that contains setup.bat (no drive letter): $Path"
+    }
     Join-Path $here $Path
 }
 
@@ -71,15 +73,15 @@ try {
     }
     else {
         Write-Output ''
-        Write-Output '=== Interactive mode (answer in this window) ==='
-        Write-Output "Paths can be full or relative to: $here"
+        Write-Output '=== Interactive mode — relative paths only (same folder as setup.ps1) ==='
+        Write-Output "Base folder: $here"
         Write-Output ''
 
-        $curl = Require-Path (Join-Here (Read-LinePrompt '1/5 Full path to curl.exe'))
-        $sevenZip = Require-Path (Join-Here (Read-LinePrompt '2/5 Full path to 7z.exe'))
-        $cd1 = Require-Path (Join-Here (Read-LinePrompt '3/5 Disc 1 folder (game root; contains compressed.zip)'))
-        $cd2 = Require-Path (Join-Here (Read-LinePrompt '4/5 Disc 2 folder'))
-        $out = Join-Here (Read-LinePrompt '5/5 Output folder for merged install (created if missing)')
+        $curl = Require-Path (Join-Here (Read-LinePrompt '1/5 Relative path to curl.exe (e.g. curl.exe)'))
+        $sevenZip = Require-Path (Join-Here (Read-LinePrompt '2/5 Relative path to 7z.exe (e.g. 7z.exe)'))
+        $cd1 = Require-Path (Join-Here (Read-LinePrompt '3/5 Relative path to disc 1 folder (e.g. iso1; each disc has compressed.zip)'))
+        $cd2 = Require-Path (Join-Here (Read-LinePrompt '4/5 Relative path to disc 2 folder (e.g. iso2)'))
+        $out = Join-Here (Read-LinePrompt '5/5 Relative path to output folder (e.g. merged)')
     }
 
     $env:CURL_EXE = $curl
