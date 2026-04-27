@@ -40,7 +40,12 @@ set "EXE_7Z=%BASE%%SZ%"
 set "SRC1=%BASE%%D1%"
 set "SRC2=%BASE%%D2%"
 set "OUT=%BASE%%OD%"
-set "MERGE=%OUT%\_nfsu2_zip_work"
+rem Trailing backslashes on paths can confuse robocopy argument parsing
+if "!EXE_7Z:~-1!"=="\" set "EXE_7Z=!EXE_7Z:~0,-1!"
+if "!SRC1:~-1!"=="\" set "SRC1=!SRC1:~0,-1!"
+if "!SRC2:~-1!"=="\" set "SRC2=!SRC2:~0,-1!"
+if "!OUT:~-1!"=="\" set "OUT=!OUT:~0,-1!"
+set "MERGE=!OUT!\_nfsu2_zip_work"
 
 if not exist "%EXE_7Z%" (
   echo ERROR: 7-Zip not found: "%EXE_7Z%"
@@ -69,12 +74,54 @@ if not exist "%OUT%" mkdir "%OUT%"
 call :append_log mkdir output if missing
 
 echo.
-echo [1] robocopy disc1 -^> output ...
-call :append_log "[1] robocopy disc1 -> output"
+echo --- robocopy ---
+where robocopy 2>nul
+for /f "tokens=*" %%W in ('where robocopy 2^>nul') do (
+  >>"%LOG%" echo %DATE% %TIME% robocopy exe %%W
+  goto :rb_where_done
+)
+:rb_where_done
+set "_RBVER="
+for /f "tokens=*" %%L in ('robocopy /? 2^>nul ^| findstr /i "Version"') do (
+  set "_RBVER=%%L"
+  goto :rb_ver_done
+)
+:rb_ver_done
+if defined _RBVER (
+  echo !_RBVER!
+  >>"%LOG%" echo %DATE% %TIME% !_RBVER!
+) else (
+  echo ^(could not parse version line from robocopy /?^)
+  >>"%LOG%" echo %DATE% %TIME% WARN robocopy version line not found
+)
+echo ---
+
+echo.
+echo [1] Copy disc1 -^> output ...
+call :append_log "[1] copy disc1 -> output"
+rem Do not "call :append_log ... /E ..." — cmd treats /E as a switch to CALL and breaks the line.
+>>"%LOG%" echo %DATE% %TIME% robocopy "%SRC1%" "%OUT%" /E /COPY:DAT /R:2 /W:2 /NFL /NDL
 robocopy "%SRC1%" "%OUT%" /E /COPY:DAT /R:2 /W:2 /NFL /NDL
 set RC=!ERRORLEVEL!
 call :append_log robocopy disc1 exit !RC!
-if !RC! GEQ 8 goto :bad_robo
+if !RC! LSS 8 goto :disc1_ok
+echo.
+echo robocopy failed with code !RC!.
+echo   Code 16 = robocopy serious error ^(bad paths, permissions, or unsupported args — not missing robocopy^).
+echo Trying xcopy fallback...
+call :append_log fallback xcopy disc1
+if not exist "%OUT%" mkdir "%OUT%"
+>>"%LOG%" echo %DATE% %TIME% xcopy disc1 fallback to "%OUT%"
+xcopy "%SRC1%\*" "%OUT%\" /E /I /H /Y
+set XR=!ERRORLEVEL!
+call :append_log xcopy exit !XR!
+if !XR! EQU 0 goto :disc1_ok
+echo ERROR: xcopy failed ^(exit !XR!^). Check paths and nfsu2_merge.log
+call :append_log ERROR xcopy disc1 failed !XR!
+pause
+exit /b 1
+
+:disc1_ok
 
 if not exist "%OUT%\compressed.zip" (
   echo ERROR: compressed.zip missing after disc1 copy.
@@ -86,12 +133,33 @@ if exist "%OUT%\compressed_cd1.zip" del /f /q "%OUT%\compressed_cd1.zip"
 ren "%OUT%\compressed.zip" compressed_cd1.zip
 call :append_log renamed compressed.zip -^> compressed_cd1.zip
 
-echo [2] robocopy disc2 -^> output ^(skip bin.dat^) ...
-call :append_log "[2] robocopy disc2 -> output /XF bin.dat"
+echo [2] Copy disc2 -^> output ^(normally skip bin.dat from disc2^) ...
+call :append_log "[2] copy disc2 -> output"
+>>"%LOG%" echo %DATE% %TIME% robocopy "%SRC2%" "%OUT%" /E /COPY:DAT /R:2 /W:2 /NFL /NDL /XF bin.dat
 robocopy "%SRC2%" "%OUT%" /E /COPY:DAT /R:2 /W:2 /NFL /NDL /XF bin.dat
 set RC=!ERRORLEVEL!
 call :append_log robocopy disc2 exit !RC!
-if !RC! GEQ 8 goto :bad_robo
+if !RC! LSS 8 goto :disc2_ok
+echo.
+echo robocopy failed with code !RC!. Trying xcopy + restore disc1 bin.dat...
+call :append_log fallback xcopy disc2 then restore bin.dat from disc1
+>>"%LOG%" echo %DATE% %TIME% xcopy disc2 fallback to "%OUT%"
+xcopy "%SRC2%\*" "%OUT%\" /E /I /H /Y
+set XR=!ERRORLEVEL!
+call :append_log xcopy exit !XR!
+if exist "%SRC1%\bin.dat" (
+  copy /Y "%SRC1%\bin.dat" "%OUT%\bin.dat" >nul
+  call :append_log restored bin.dat from disc1
+) else (
+  call :append_log WARN no bin.dat on disc1 to restore
+)
+if !XR! EQU 0 goto :disc2_ok
+echo ERROR: xcopy disc2 failed ^(exit !XR!^).
+call :append_log ERROR xcopy disc2 failed !XR!
+pause
+exit /b 1
+
+:disc2_ok
 
 if not exist "%OUT%\compressed.zip" (
   echo ERROR: compressed.zip from disc2 missing in output.
@@ -194,12 +262,6 @@ goto :eof
 
 :need_args
 echo ERROR: All four paths are required.
-pause
-exit /b 1
-
-:bad_robo
-echo ERROR: robocopy failed ^(code !RC!^).
-call :append_log ERROR robocopy code !RC!
 pause
 exit /b 1
 
