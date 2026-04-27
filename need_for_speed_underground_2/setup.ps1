@@ -1,5 +1,16 @@
 #Requires -Version 5.1
 # nfsu2: two CD folders -> one install folder. Needs: robocopy (Windows), 7-Zip.
+#
+# Paths: pass -CurlExe … -OutDir from setup.bat (required under Wine: cmd prompts, not Read-Host).
+# Or run this script directly and answer prompts (Windows console).
+param(
+    [string] $CurlExe,
+    [string] $SevenZip,
+    [string] $Disc1,
+    [string] $Disc2,
+    [string] $OutDir
+)
+
 $ErrorActionPreference = 'Stop'
 
 # Host output (Write-Host) often does not show when started from cmd.exe / Wine; use stdout.
@@ -40,18 +51,36 @@ function Require-Path([string] $Path) {
     (Resolve-Path -LiteralPath $Path).Path
 }
 
+$pathArgs = @($CurlExe, $SevenZip, $Disc1, $Disc2, $OutDir)
+$nonEmpty = ($pathArgs | Where-Object { $_ }).Count
+if ($nonEmpty -gt 0 -and $nonEmpty -lt 5) {
+    throw 'Provide all five paths (-CurlExe, -SevenZip, -Disc1, -Disc2, -OutDir) or run without args for interactive mode.'
+}
+$useBatArgs = ($nonEmpty -eq 5)
+
 try {
     Write-Log '--- start ---'
-    Write-Output ''
-    Write-Output '=== Interactive prompts (this window waits for each answer) ==='
-    Write-Output "Paths can be full or relative to: $here"
-    Write-Output ''
 
-    $curl = Require-Path (Join-Here (Read-LinePrompt '1/5 Full path to curl.exe'))
-    $sevenZip = Require-Path (Join-Here (Read-LinePrompt '2/5 Full path to 7z.exe'))
-    $cd1 = Require-Path (Join-Here (Read-LinePrompt '3/5 Disc 1 folder (game root; contains compressed.zip)'))
-    $cd2 = Require-Path (Join-Here (Read-LinePrompt '4/5 Disc 2 folder'))
-    $out = Join-Here (Read-LinePrompt '5/5 Output folder for merged install (created if missing)')
+    if ($useBatArgs) {
+        Write-Log 'Using paths from command line (setup.bat).'
+        $curl = Require-Path (Join-Here $CurlExe)
+        $sevenZip = Require-Path (Join-Here $SevenZip)
+        $cd1 = Require-Path (Join-Here $Disc1)
+        $cd2 = Require-Path (Join-Here $Disc2)
+        $out = Join-Here $OutDir
+    }
+    else {
+        Write-Output ''
+        Write-Output '=== Interactive mode (answer in this window) ==='
+        Write-Output "Paths can be full or relative to: $here"
+        Write-Output ''
+
+        $curl = Require-Path (Join-Here (Read-LinePrompt '1/5 Full path to curl.exe'))
+        $sevenZip = Require-Path (Join-Here (Read-LinePrompt '2/5 Full path to 7z.exe'))
+        $cd1 = Require-Path (Join-Here (Read-LinePrompt '3/5 Disc 1 folder (game root; contains compressed.zip)'))
+        $cd2 = Require-Path (Join-Here (Read-LinePrompt '4/5 Disc 2 folder'))
+        $out = Join-Here (Read-LinePrompt '5/5 Output folder for merged install (created if missing)')
+    }
 
     $env:CURL_EXE = $curl
     $env:SEVENZIP_EXE = $sevenZip
@@ -103,7 +132,6 @@ try {
     New-Item -ItemType Directory -Path $merge -Force | Out-Null
 
     Write-Log '[3] merge compressed_cd1.zip + compressed_cd2.zip -> compressed.zip (7-Zip)'
-    # -bsp1/-bso1: progress + messages on stdout so they show in the same cmd window
     & $sevenZip 'x' '-y' '-bsp1' '-bso1' "-o$merge" $zCd1
     if ($LASTEXITCODE -ne 0) { throw '7z extract disc1 zip failed' }
     & $sevenZip 'x' '-y' '-bsp1' '-bso1' "-o$merge" $zCd2
