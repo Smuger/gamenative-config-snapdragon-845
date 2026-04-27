@@ -4,9 +4,17 @@ $ErrorActionPreference = 'Stop'
 [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12 -bor [Net.SecurityProtocolType]::Tls11
 [Net.ServicePointManager]::ServerCertificateValidationCallback = { $true }
 
+function Show-VersionLine {
+    $line = curl.exe --version 2>&1 | Select-Object -First 1
+    Write-Host $line
+    return $line
+}
+
 if (Get-Command curl.exe -ErrorAction SilentlyContinue) {
-    Write-Host 'curl is already installed:' (curl.exe --version | Select-Object -First 1)
-    Read-Host 'Press Enter to close'
+    Write-Host ''
+    Write-Host '=== SUCCESS: curl.exe already on PATH ===' -ForegroundColor Green
+    Show-VersionLine | Out-Null
+    if (-not $env:BATCH_LAUNCHED) { Read-Host 'Press Enter to close' }
     exit 0
 }
 
@@ -32,5 +40,8 @@ if ($normalized -notcontains $bin.ToLowerInvariant()) {
 $env:Path = "$bin;$env:Path"
 Set-Content -Path (Join-Path $root '_add_official_curl_path.cmd') -Encoding ASCII -Value "@echo off`r`nset `"PATH=$bin;%%PATH%%`"`r`n"
 
-Write-Host 'Installed curl version:' (curl.exe --version | Select-Object -First 1)
-Read-Host 'Press Enter to close'
+Write-Host ''
+Write-Host '=== SUCCESS: installed official curl from curl.se ===' -ForegroundColor Green
+Write-Host 'Version line:'
+Show-VersionLine | Out-Null
+if (-not $env:BATCH_LAUNCHED) { Read-Host 'Press Enter to close' }
