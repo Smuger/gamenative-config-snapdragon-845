@@ -19,6 +19,16 @@ Windows Registry Editor Version 5.00
 ; [D] Wow6432Node\EA Games mirror — 32-bit game on 64-bit Windows/Wine uses the WOW64
 ;     view of HKLM\SOFTWARE (documented Windows behavior; Wine follows it).
 ;
+; [E] Game registry behavior (reverse engineering — keys the EXE actually reads):
+;     https://yugecin.github.io/nfsu2-re/docs.html
+;     - VERSION/SIZE + graphics DWORDs: HKCU\Software\EA Games\Need for Speed Underground 2
+;     - HKLM Install Dir must survive GetLongPathNameA (avoid odd paths under Wine)
+;     - Extra CD-key key: HKLM\...\Electronic Arts\EA Games\Need for Speed Underground 2\er
+;
+; [F] Same error from EA's PATCH installer is often wrong *regional* patch vs installed SKU:
+;     https://www.nfsplanet.com/nfs8_patch.php?lang=eng
+;     https://www.neowin.net/forum/topic/250876-cannot-install-nfs-u2-patch/
+;
 ; BEFORE IMPORTING - EDIT THESE IN Notepad (keep double backslashes in paths):
 ;   1) Install Dir + CD Drive + Installed From  -> must match your Wine drive layout
 ;   2) ergc -> your real retail CD key, 20 characters, NO dashes (same as on disc case)
@@ -40,13 +50,10 @@ Windows Registry Editor Version 5.00
 ; point at that same directory—do not add an extra "Need for Speed..." subfolder unless
 ; you actually installed the game there.
 ;
-; UK / PAL vs "English US" + region_us:
-;   A clean UK install *may* write "English UK", en_uk, region_uk, and a UK patch URL.
-;   The game EXE and Product GUID are usually the same; these strings mainly affect
-;   installer/patch expectations. If the game and your key work, leave them as below—
-;   changing region/locale to "match" the box can break no-CD patches or US-only
-;   updaters. Only switch to UK-style values if something still errors and names
-;   language/region explicitly.
+; Locale/Patch/Region below are set for UK retail + UK patch URL (EN-UK). US discs: use
+; English US, en_us, EN-US patch URL, region_us. Mixed US registry + UK patch (or reverse)
+; triggers "Missing or Invalid Registry/INI Entry" on the patch installer.
+; If the UK patch still complains, try "Region"="region_uk" (some SKUs differ).
 ;
 
 ; -------- 32-bit prefix (no Wow6432Node) --------
@@ -58,11 +65,11 @@ Windows Registry Editor Version 5.00
 "Folder"="."
 "Install Dir"="D:\\nfs"
 "Installed From"="D:\\"
-"Language"="English US"
-"Locale"="en_us"
-"Patch URL"="http://patches.ea.com/nfs_underground2/EN-US/home.html"
+"Language"="English UK"
+"Locale"="en_uk"
+"Patch URL"="http://patches.ea.com/nfs_underground2/EN-UK/home.html"
 "Product GUID"="{909F8EBC-EC7F-48FF-0085-475D818F0F31}"
-"Region"="region_us"
+"Region"="region_eu"
 "Registration"="SOFTWARE\\Electronic Arts\\EA GAMES\\Need for Speed Underground 2\\ergc"
 "Suppression Exe"=""
 "SwapSize"="0"
@@ -72,7 +79,7 @@ Windows Registry Editor Version 5.00
 
 [HKEY_LOCAL_MACHINE\SOFTWARE\EA Games\Need for Speed Underground 2\1.0]
 "DisplayName"="Need for Speed Underground 2"
-"LanguageName"="English US"
+"LanguageName"="English UK"
 "Language"=dword:00000001
 
 [HKEY_LOCAL_MACHINE\SOFTWARE\Electronic Arts\EA GAMES\Need for Speed Underground 2\ergc]
@@ -87,11 +94,11 @@ Windows Registry Editor Version 5.00
 "Folder"="."
 "Install Dir"="D:\\nfs"
 "Installed From"="D:\\"
-"Language"="English US"
-"Locale"="en_us"
-"Patch URL"="http://patches.ea.com/nfs_underground2/EN-US/home.html"
+"Language"="English UK"
+"Locale"="en_uk"
+"Patch URL"="http://patches.ea.com/nfs_underground2/EN-UK/home.html"
 "Product GUID"="{909F8EBC-EC7F-48FF-0085-475D818F0F31}"
-"Region"="region_us"
+"Region"="region_eu"
 "Registration"="SOFTWARE\\Electronic Arts\\EA GAMES\\Need for Speed Underground 2\\ergc"
 "Suppression Exe"=""
 "SwapSize"="0"
@@ -101,11 +108,57 @@ Windows Registry Editor Version 5.00
 
 [HKEY_LOCAL_MACHINE\SOFTWARE\Wow6432Node\EA Games\Need for Speed Underground 2\1.0]
 "DisplayName"="Need for Speed Underground 2"
-"LanguageName"="English US"
+"LanguageName"="English UK"
 "Language"=dword:00000001
 
 [HKEY_LOCAL_MACHINE\SOFTWARE\Wow6432Node\Electronic Arts\EA GAMES\Need for Speed Underground 2\ergc]
 @="xxxxxxxxxxxxxxxxxxxx"
+
+; Alternate CD-key path used by some installers / Neowin-era instructions ("EA Games" casing):
+[HKEY_LOCAL_MACHINE\SOFTWARE\Electronic Arts\EA Games\Need for Speed Underground 2\ergc]
+@="xxxxxxxxxxxxxxxxxxxx"
+
+[HKEY_LOCAL_MACHINE\SOFTWARE\Wow6432Node\Electronic Arts\EA Games\Need for Speed Underground 2\ergc]
+@="xxxxxxxxxxxxxxxxxxxx"
+
+; "er" default string — game reads this from HKLM per nfsu2-re (20 chars, same as CD key):
+[HKEY_LOCAL_MACHINE\SOFTWARE\Electronic Arts\EA Games\Need for Speed Underground 2\er]
+@="xxxxxxxxxxxxxxxxxxxx"
+
+[HKEY_LOCAL_MACHINE\SOFTWARE\Wow6432Node\Electronic Arts\EA Games\Need for Speed Underground 2\er]
+@="xxxxxxxxxxxxxxxxxxxx"
+
+; Graphics + VERSION/SIZE — nfsu2-re: loaded from HKCU (RegFiles also lists these on HKLM):
+[HKEY_CURRENT_USER\Software\EA Games\Need for Speed Underground 2]
+"VERSION"=dword:00000001
+"SIZE"=dword:00000078
+"g_CarEnvironmentMapEnable"=dword:00000003
+"g_CarEnvironmentMapUpdateData"=dword:00000001
+"g_CarShadowEnable"=dword:00000002
+"g_CarHeadlightEnable"=dword:00000001
+"g_CarLightingEnable"=dword:00000000
+"g_CarDamageEnable"=dword:00000000
+"g_CrowdEnable"=dword:00000001
+"g_RoadReflectionEnable"=dword:00000003
+"g_FogEnable"=dword:00000001
+"g_MotionBlurEnable"=dword:00000001
+"g_LightStreaksEnable"=dword:00000001
+"g_LightGlowEnable"=dword:00000001
+"g_AnimatedTextureEnable"=dword:00000001
+"g_ParticleSystemEnable"=dword:00000001
+"g_DepthOfFieldEnable"=dword:00000001
+"g_WorldLodLevel"=dword:00000002
+"g_CarLodLevel"=dword:00000001
+"g_OverBrightEnable"=dword:00000001
+"g_BleachByPassEnable"=dword:00000001
+"g_TintingEnable"=dword:00000001
+"g_FSAALevel"=dword:00000000
+"g_HorizonFogEnable"=dword:00000001
+"g_RainEnable"=dword:00000001
+"g_TextureFiltering"=dword:00000002
+"g_RacingResolution"=dword:00000001
+"g_PerformanceLevel"=dword:00000005
+"g_VSyncOn"=dword:00000001
 
 ; Uninstall (32-bit prefix)
 [HKEY_LOCAL_MACHINE\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\{909F8EBC-EC7F-48FF-0085-475D818F0F31}]
