@@ -44,9 +44,9 @@ Windows Registry Editor Version 5.00
 ;   - HKLM\SOFTWARE\Wow6432Node\EA Games\... -> 32-bit app on 64-bit prefix (common)
 ; If one tree fails to import, delete that section and keep the other.
 ;
-; Install / Uninstall paths below use D:\nfs on purpose: that is the game root inside
-; Wine/Winlator (same as D:/nfs on disk), i.e. the folder that contains speed2.exe
-; (e.g. D:/nfs/speed2.exe). Install Dir, InstallLocation, and UninstallString must all
+; Install / Uninstall paths below use A:\nfs on purpose: that is the game root inside
+; Wine/Winlator (same as A:/nfs on disk), i.e. the folder that contains speed2.exe
+; (e.g. A:/nfs/speed2.exe). Install Dir, InstallLocation, and UninstallString must all
 ; point at that same directory—do not add an extra "Need for Speed..." subfolder unless
 ; you actually installed the game there.
 ;
@@ -60,11 +60,11 @@ Windows Registry Editor Version 5.00
 
 [HKEY_LOCAL_MACHINE\SOFTWARE\EA Games\Need for Speed Underground 2]
 "CacheSize"="1879040000"
-"CD Drive"="D:\\"
+"CD Drive"="A:\\"
 "DisplayName"="Need for Speed Underground 2"
 "Folder"="."
-"Install Dir"="D:\\nfs"
-"Installed From"="D:\\"
+"Install Dir"="A:\\nfs"
+"Installed From"="A:\\"
 "Language"="English UK"
 "Locale"="en_uk"
 "Patch URL"="http://patches.ea.com/nfs_underground2/EN-UK/home.html"
@@ -89,11 +89,11 @@ Windows Registry Editor Version 5.00
 
 [HKEY_LOCAL_MACHINE\SOFTWARE\Wow6432Node\EA Games\Need for Speed Underground 2]
 "CacheSize"="1879040000"
-"CD Drive"="D:\\"
+"CD Drive"="A:\\"
 "DisplayName"="Need for Speed Underground 2"
 "Folder"="."
-"Install Dir"="D:\\nfs"
-"Installed From"="D:\\"
+"Install Dir"="A:\\nfs"
+"Installed From"="A:\\"
 "Language"="English UK"
 "Locale"="en_uk"
 "Patch URL"="http://patches.ea.com/nfs_underground2/EN-UK/home.html"
@@ -163,25 +163,25 @@ Windows Registry Editor Version 5.00
 ; App Paths — disc AutoRun/RunGame.exe call into App Paths (strings reference
 ; SOFTWARE\...\App Paths\ and speed2.exe); optional but matches retail installers:
 [HKEY_LOCAL_MACHINE\SOFTWARE\Microsoft\Windows\CurrentVersion\App Paths\speed2.exe]
-@="D:\\nfs\\speed2.exe"
+@="A:\\nfs\\speed2.exe"
 
 [HKEY_LOCAL_MACHINE\SOFTWARE\Wow6432Node\Microsoft\Windows\CurrentVersion\App Paths\speed2.exe]
-@="D:\\nfs\\speed2.exe"
+@="A:\\nfs\\speed2.exe"
 
 ; Uninstall (32-bit prefix)
 [HKEY_LOCAL_MACHINE\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\{909F8EBC-EC7F-48FF-0085-475D818F0F31}]
 "DisplayName"="Need for Speed Underground 2"
 "DisplayVersion"="1.0"
-"InstallLocation"="D:\\nfs"
+"InstallLocation"="A:\\nfs"
 "Publisher"="Electronic Arts"
-"UninstallString"="\"D:\\nfs\\Uninst.isu\""
+"UninstallString"="\"A:\\nfs\\Uninst.isu\""
 "NoModify"=dword:00000001
 
 ; Uninstall (64-bit Wine WOW64 – duplicate if your prefix uses Wow6432Node for 32-bit uninstallers)
 [HKEY_LOCAL_MACHINE\SOFTWARE\Wow6432Node\Microsoft\Windows\CurrentVersion\Uninstall\{909F8EBC-EC7F-48FF-0085-475D818F0F31}]
 "DisplayName"="Need for Speed Underground 2"
 "DisplayVersion"="1.0"
-"InstallLocation"="D:\\nfs"
+"InstallLocation"="A:\\nfs"
 "Publisher"="Electronic Arts"
-"UninstallString"="\"D:\\nfs\\Uninst.isu\""
+"UninstallString"="\"A:\\nfs\\Uninst.isu\""
 "NoModify"=dword:00000001
