@@ -40,7 +40,6 @@ set "EXE_7Z=%BASE%%SZ%"
 set "SRC1=%BASE%%D1%"
 set "SRC2=%BASE%%D2%"
 set "OUT=%BASE%%OD%"
-rem Trailing backslashes on paths can confuse robocopy argument parsing
 if "!EXE_7Z:~-1!"=="\" set "EXE_7Z=!EXE_7Z:~0,-1!"
 if "!SRC1:~-1!"=="\" set "SRC1=!SRC1:~0,-1!"
 if "!SRC2:~-1!"=="\" set "SRC2=!SRC2:~0,-1!"
@@ -52,6 +51,19 @@ if not exist "%EXE_7Z%" (
   pause
   exit /b 1
 )
+for %%F in ("%EXE_7Z%") do set "EXE_NAME=%%~nxF"
+if /I not "!EXE_NAME!"=="7z.exe" if /I not "!EXE_NAME!"=="7za.exe" (
+  echo ERROR: Use 7-Zip CLI executable ^(7z.exe or 7za.exe^), not "!EXE_NAME!".
+  pause
+  exit /b 1
+)
+"%EXE_7Z%" i >nul 2>&1
+if errorlevel 2 (
+  echo ERROR: "%EXE_7Z%" did not run as 7-Zip CLI.
+  pause
+  exit /b 1
+)
+
 if not exist "%SRC1%\compressed.zip" (
   echo ERROR: Missing "%SRC1%\compressed.zip"
   pause
@@ -74,113 +86,59 @@ if not exist "%OUT%" mkdir "%OUT%"
 call :append_log mkdir output if missing
 
 echo.
-echo --- robocopy ---
-where robocopy 2>nul
-for /f "tokens=*" %%W in ('where robocopy 2^>nul') do (
-  >>"%LOG%" echo %DATE% %TIME% robocopy exe %%W
-  goto :rb_where_done
-)
-:rb_where_done
-set "_RBVER="
-for /f "tokens=*" %%L in ('robocopy /? 2^>nul ^| findstr /i "Version"') do (
-  set "_RBVER=%%L"
-  goto :rb_ver_done
-)
-:rb_ver_done
-if defined _RBVER (
-  echo !_RBVER!
-  >>"%LOG%" echo %DATE% %TIME% !_RBVER!
-) else (
-  echo ^(could not parse version line from robocopy /?^)
-  >>"%LOG%" echo %DATE% %TIME% WARN robocopy version line not found
-)
-echo ---
-
-echo.
-echo [1] Copy disc1 -^> output ...
-call :append_log "[1] copy disc1 -> output"
-rem Do not "call :append_log ... /E ..." — cmd treats /E as a switch to CALL and breaks the line.
->>"%LOG%" echo %DATE% %TIME% robocopy "%SRC1%" "%OUT%" /E /COPY:DAT /R:2 /W:2 /NFL /NDL
-robocopy "%SRC1%" "%OUT%" /E /COPY:DAT /R:2 /W:2 /NFL /NDL
-set RC=!ERRORLEVEL!
-call :append_log robocopy disc1 exit !RC!
-if !RC! LSS 8 goto :disc1_ok
-echo.
-echo robocopy failed with code !RC!.
-echo   Code 16 = robocopy serious error ^(bad paths, permissions, or unsupported args — not missing robocopy^).
-echo Trying xcopy fallback...
-call :append_log fallback xcopy disc1
-if not exist "%OUT%" mkdir "%OUT%"
->>"%LOG%" echo %DATE% %TIME% xcopy disc1 fallback to "%OUT%"
+echo [1] Copy disc1 -^> output ^(xcopy^) ...
+call :append_log "[1] xcopy disc1 -> output"
+>>"%LOG%" echo %DATE% %TIME% xcopy "%SRC1%\*" "%OUT%\" /E /I /H /Y
 xcopy "%SRC1%\*" "%OUT%\" /E /I /H /Y
 set XR=!ERRORLEVEL!
-call :append_log xcopy exit !XR!
-if !XR! EQU 0 goto :disc1_ok
-echo ERROR: xcopy failed ^(exit !XR!^). Check paths and nfsu2_merge.log
-call :append_log ERROR xcopy disc1 failed !XR!
-pause
-exit /b 1
+call :append_log xcopy disc1 exit !XR!
+if not "!XR!"=="0" goto :bad_xcopy
 
-:disc1_ok
-
-if not exist "%OUT%\compressed.zip" (
-  echo ERROR: compressed.zip missing after disc1 copy.
-  call :append_log ERROR compressed.zip missing after disc1
+for %%S in ("%SRC1%\compressed.zip") do set "Z1=%%~zS"
+call :append_log disc1 compressed.zip bytes !Z1!
+if !Z1! LSS 1000000 (
+  echo ERROR: disc1 compressed.zip looks too small ^(!Z1! bytes^).
+  call :append_log ERROR disc1 compressed.zip too small !Z1!
   pause
   exit /b 1
 )
-if exist "%OUT%\compressed_cd1.zip" del /f /q "%OUT%\compressed_cd1.zip"
-ren "%OUT%\compressed.zip" compressed_cd1.zip
-call :append_log renamed compressed.zip -^> compressed_cd1.zip
 
-echo [2] Copy disc2 -^> output ^(normally skip bin.dat from disc2^) ...
-call :append_log "[2] copy disc2 -> output"
->>"%LOG%" echo %DATE% %TIME% robocopy "%SRC2%" "%OUT%" /E /COPY:DAT /R:2 /W:2 /NFL /NDL /XF bin.dat
-robocopy "%SRC2%" "%OUT%" /E /COPY:DAT /R:2 /W:2 /NFL /NDL /XF bin.dat
-set RC=!ERRORLEVEL!
-call :append_log robocopy disc2 exit !RC!
-if !RC! LSS 8 goto :disc2_ok
-echo.
-echo robocopy failed with code !RC!. Trying xcopy + restore disc1 bin.dat...
-call :append_log fallback xcopy disc2 then restore bin.dat from disc1
->>"%LOG%" echo %DATE% %TIME% xcopy disc2 fallback to "%OUT%"
+echo [2] Copy disc2 -^> output ^(xcopy^) ...
+call :append_log "[2] xcopy disc2 -> output"
+>>"%LOG%" echo %DATE% %TIME% xcopy "%SRC2%\*" "%OUT%\" /E /I /H /Y
 xcopy "%SRC2%\*" "%OUT%\" /E /I /H /Y
 set XR=!ERRORLEVEL!
-call :append_log xcopy exit !XR!
+call :append_log xcopy disc2 exit !XR!
+if not "!XR!"=="0" goto :bad_xcopy
+
 if exist "%SRC1%\bin.dat" (
   copy /Y "%SRC1%\bin.dat" "%OUT%\bin.dat" >nul
   call :append_log restored bin.dat from disc1
 ) else (
   call :append_log WARN no bin.dat on disc1 to restore
 )
-if !XR! EQU 0 goto :disc2_ok
-echo ERROR: xcopy disc2 failed ^(exit !XR!^).
-call :append_log ERROR xcopy disc2 failed !XR!
-pause
-exit /b 1
 
-:disc2_ok
-
-if not exist "%OUT%\compressed.zip" (
-  echo ERROR: compressed.zip from disc2 missing in output.
-  call :append_log ERROR missing compressed.zip after disc2
+for %%S in ("%SRC2%\compressed.zip") do set "Z2=%%~zS"
+call :append_log disc2 compressed.zip bytes !Z2!
+if !Z2! LSS 1000000 (
+  echo ERROR: disc2 compressed.zip looks too small ^(!Z2! bytes^).
+  call :append_log ERROR disc2 compressed.zip too small !Z2!
   pause
   exit /b 1
 )
-if exist "%OUT%\compressed_cd2.zip" del /f /q "%OUT%\compressed_cd2.zip"
-ren "%OUT%\compressed.zip" compressed_cd2.zip
-call :append_log renamed compressed.zip -^> compressed_cd2.zip
 
-echo [3] merging compressed_cd1.zip + compressed_cd2.zip ...
-call :append_log "[3] 7z merge -> compressed.zip"
+echo [3] merging src compressed.zip files directly ...
+call :append_log "[3] 7z merge from SRC1/SRC2 compressed.zip -> OUT\\compressed.zip"
 if exist "%MERGE%" rd /s /q "%MERGE%"
 mkdir "%MERGE%"
-"%EXE_7Z%" x -y "-o%MERGE%" "%OUT%\compressed_cd1.zip"
+>>"%LOG%" echo %DATE% %TIME% 7z x -y "-o%MERGE%" "%SRC1%\compressed.zip"
+"%EXE_7Z%" x -y "-o%MERGE%" "%SRC1%\compressed.zip" >>"%LOG%" 2>&1
 if errorlevel 2 (
   set ZERR=!ERRORLEVEL!
   goto :bad_7z
 )
-"%EXE_7Z%" x -y "-o%MERGE%" "%OUT%\compressed_cd2.zip"
+>>"%LOG%" echo %DATE% %TIME% 7z x -y "-o%MERGE%" "%SRC2%\compressed.zip"
+"%EXE_7Z%" x -y "-o%MERGE%" "%SRC2%\compressed.zip" >>"%LOG%" 2>&1
 if errorlevel 2 (
   set ZERR=!ERRORLEVEL!
   goto :bad_7z
@@ -188,7 +146,8 @@ if errorlevel 2 (
 
 pushd "%MERGE%"
 if exist "%OUT%\compressed.zip" del /f /q "%OUT%\compressed.zip"
-"%EXE_7Z%" a -tzip "%OUT%\compressed.zip" *
+>>"%LOG%" echo %DATE% %TIME% 7z a -tzip "%OUT%\compressed.zip" *
+"%EXE_7Z%" a -tzip "%OUT%\compressed.zip" * >>"%LOG%" 2>&1
 set ZERR=!ERRORLEVEL!
 popd
 if !ZERR! GEQ 2 goto :bad_7z
@@ -199,9 +158,8 @@ if not exist "%OUT%\compressed.zip" (
   exit /b 1
 )
 
-del /f /q "%OUT%\compressed_cd1.zip" "%OUT%\compressed_cd2.zip" 2>nul
 rd /s /q "%MERGE%" 2>nul
-call :append_log merged compressed.zip - removed split zips and work dir
+call :append_log merged compressed.zip from source zips - removed work dir
 
 echo [4] patch common_filelist.txt ...
 call :append_log "[4] patch common_filelist.txt"
@@ -262,6 +220,12 @@ goto :eof
 
 :need_args
 echo ERROR: All four paths are required.
+pause
+exit /b 1
+
+:bad_xcopy
+echo ERROR: xcopy failed ^(exit !XR!^).
+call :append_log ERROR xcopy failed !XR!
 pause
 exit /b 1
 
