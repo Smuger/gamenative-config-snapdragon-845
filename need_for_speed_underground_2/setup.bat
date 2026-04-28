@@ -13,8 +13,18 @@ echo.
 echo Each disc folder ^(e.g. iso1, iso2^) must contain compressed.zip.
 echo.
 
-set /p SZ=1/4 Relative path to 7z.exe [default: 7z.exe]: 
-if "%SZ%"=="" set "SZ=7z.exe"
+set "SZ_DEF=7z.exe"
+set "WHERE7Z="
+for /f "delims=" %%Q in ('where 7z.exe 2^>nul') do (
+  set "WHERE7Z=%%Q"
+  echo where 7z.exe: %%Q
+  call :RelFromBase "%%Q" SZ_DEF
+  goto :after_where7z
+)
+:after_where7z
+
+set /p SZ=1/4 Relative path to 7z.exe [default: !SZ_DEF!]: 
+if "!SZ!"=="" set "SZ=!SZ_DEF!"
 set /p D1=2/4 Relative path to disc 1 folder [default: nfs_ug2_1]: 
 if "%D1%"=="" set "D1=nfs_ug2_1"
 set /p D2=3/4 Relative path to disc 2 folder [default: nfs_ug2_2]: 
@@ -69,6 +79,8 @@ if not exist "%SRC2%\compressed.zip" (
 
 echo %DATE% %TIME% --- start --- >"%LOG%"
 call :append_log BASE=!BASE!
+if defined WHERE7Z call :append_log where 7z.exe=!WHERE7Z!
+call :append_log default SZ_DEF=!SZ_DEF!
 call :append_log 7z=!EXE_7Z!
 call :append_log disc1=!SRC1!
 call :append_log disc2=!SRC2!
@@ -184,19 +196,23 @@ if exist "%OUT%\AutoRun\autorun.cfg" (
   call :append_log WARN AutoRun\autorun.cfg missing
 )
 
-echo [6] patch autorun.inf ...
-call :append_log "[6] patch autorun.inf"
-if exist "%OUT%\autorun.inf" (
-  if exist "%OUT%\autorun.inf.$$$" del /f /q "%OUT%\autorun.inf.$$$"
-  (for /f "usebackq delims=" %%L in ("%OUT%\autorun.inf") do (
-    set "line=%%L"
-    set "line=!line:Disk=2=Disk=1!"
-    set "line=!line:open=RunGame.exe=open=Setup.exe!"
-    echo !line!
-  )) > "%OUT%\autorun.inf.$$$"
-  move /y "%OUT%\autorun.inf.$$$" "%OUT%\autorun.inf" >nul
+echo [6] autorun.inf ^(disc 1 only - Disk=1, open=Setup.exe^) ...
+call :append_log "[6] autorun.inf from disc1"
+if exist "%SRC1%\autorun.inf" (
+  copy /Y "%SRC1%\autorun.inf" "%OUT%\autorun.inf" >nul
+  call :append_log copied autorun.inf from disc1
 ) else (
-  call :append_log WARN autorun.inf missing
+  echo WARN: "%SRC1%\autorun.inf" missing - writing minimal single-disc autorun.inf
+  call :append_log WARN disc1 autorun.inf missing - minimal template
+  (
+    echo [autorun]
+    echo open=Setup.exe
+    echo Icon=NFSU_icon.ico
+    echo Name=Need for Speed Underground 2
+    echo.
+    echo [Special]
+    echo Disk=1
+  ) > "%OUT%\autorun.inf"
 )
 
 echo %DATE% %TIME% --- done --- >>"%LOG%"
@@ -209,6 +225,17 @@ exit /b 0
 :append_log
 >>"%LOG%" echo %DATE% %TIME% %*
 goto :eof
+
+rem Strip BASE prefix so PATH hit under this folder becomes a relative default.
+:RelFromBase
+setlocal EnableDelayedExpansion
+set "FULL=%~1"
+set "SUB=%BASE%"
+call set "T=%%FULL:%SUB%=%%"
+if "%T%"=="%FULL%" endlocal & exit /b 0
+if "%T:~0,1%"=="\" set "T=%T:~1%"
+endlocal & set "%~2=%T%"
+exit /b 0
 
 :need_args
 echo ERROR: All four paths are required.

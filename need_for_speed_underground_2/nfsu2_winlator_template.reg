@@ -1,0 +1,126 @@
+Windows Registry Editor Version 5.00
+;
+; NFS Underground 2 - template for Wine / Winlator / empty prefix
+;
+; --- Sources for required keys (EA did not publish a public registry specification) ---
+;
+; [A] Full reg dump matching a typical retail install — key names, Product GUID,
+;     Registration -> ergc path, 1.0 subkey, Locale/Patch URL pattern, DWORDs, etc.:
+;     https://www.regfiles.net/registry/need-for-speed-underground-2-registry
+;     (That capture uses example paths and sometimes region_mx; yours may differ by SKU.)
+;
+; [B] CD key location — HKLM\...\Electronic Arts\...\ergc default value, 20 chars,
+;     no dashes (classic EA layout); same era as retail discs:
+;     https://www.neowin.net/forum/topic/255761-change-nfs-u2-cd-key/
+;
+; [C] Product GUID {909F8EBC-EC7F-48FF-0085-475D818F0F31} — same string as [A]; this is
+;     the Windows Installer–style product code used with Uninstall\{GUID} entries.
+;
+; [D] Wow6432Node\EA Games mirror — 32-bit game on 64-bit Windows/Wine uses the WOW64
+;     view of HKLM\SOFTWARE (documented Windows behavior; Wine follows it).
+;
+; BEFORE IMPORTING - EDIT THESE IN Notepad (keep double backslashes in paths):
+;   1) Install Dir + CD Drive + Installed From  -> must match your Wine drive layout
+;   2) ergc -> your real retail CD key, 20 characters, NO dashes (same as on disc case)
+;
+; "Missing or invalid registry / INI entry" often means Install Dir / Product GUID / version
+; keys / or CD key (ergc) are absent - patches also complain if region/key mismatch.
+;
+; Import in Wine:  regedit nfsu2_winlator_template.reg
+;              or: wine regedit nfsu2_winlator_template.reg
+;
+; This file lists BOTH locations:
+;   - HKLM\SOFTWARE\EA Games\...           -> pure 32-bit prefix (WINEARCH=win32)
+;   - HKLM\SOFTWARE\Wow6432Node\EA Games\... -> 32-bit app on 64-bit prefix (common)
+; If one tree fails to import, delete that section and keep the other.
+;
+; Install / Uninstall paths below use D:\nfs on purpose: that is the game root inside
+; Wine/Winlator (same as D:/nfs on disk), i.e. the folder that contains speed2.exe
+; (e.g. D:/nfs/speed2.exe). Install Dir, InstallLocation, and UninstallString must all
+; point at that same directory—do not add an extra "Need for Speed..." subfolder unless
+; you actually installed the game there.
+;
+; UK / PAL vs "English US" + region_us:
+;   A clean UK install *may* write "English UK", en_uk, region_uk, and a UK patch URL.
+;   The game EXE and Product GUID are usually the same; these strings mainly affect
+;   installer/patch expectations. If the game and your key work, leave them as below—
+;   changing region/locale to "match" the box can break no-CD patches or US-only
+;   updaters. Only switch to UK-style values if something still errors and names
+;   language/region explicitly.
+;
+
+; -------- 32-bit prefix (no Wow6432Node) --------
+
+[HKEY_LOCAL_MACHINE\SOFTWARE\EA Games\Need for Speed Underground 2]
+"CacheSize"="1879040000"
+"CD Drive"="D:\\"
+"DisplayName"="Need for Speed Underground 2"
+"Folder"="."
+"Install Dir"="D:\\nfs"
+"Installed From"="D:\\"
+"Language"="English US"
+"Locale"="en_us"
+"Patch URL"="http://patches.ea.com/nfs_underground2/EN-US/home.html"
+"Product GUID"="{909F8EBC-EC7F-48FF-0085-475D818F0F31}"
+"Region"="region_us"
+"Registration"="SOFTWARE\\Electronic Arts\\EA GAMES\\Need for Speed Underground 2\\ergc"
+"Suppression Exe"=""
+"SwapSize"="0"
+"NotFirstTime"=dword:00000001
+"VERSION"=dword:00000001
+"SIZE"=dword:00000078
+
+[HKEY_LOCAL_MACHINE\SOFTWARE\EA Games\Need for Speed Underground 2\1.0]
+"DisplayName"="Need for Speed Underground 2"
+"LanguageName"="English US"
+"Language"=dword:00000001
+
+[HKEY_LOCAL_MACHINE\SOFTWARE\Electronic Arts\EA GAMES\Need for Speed Underground 2\ergc]
+@="xxxxxxxxxxxxxxxxxxxx"
+
+; -------- 64-bit Wine (WOW64 view) - same data --------
+
+[HKEY_LOCAL_MACHINE\SOFTWARE\Wow6432Node\EA Games\Need for Speed Underground 2]
+"CacheSize"="1879040000"
+"CD Drive"="D:\\"
+"DisplayName"="Need for Speed Underground 2"
+"Folder"="."
+"Install Dir"="D:\\nfs"
+"Installed From"="D:\\"
+"Language"="English US"
+"Locale"="en_us"
+"Patch URL"="http://patches.ea.com/nfs_underground2/EN-US/home.html"
+"Product GUID"="{909F8EBC-EC7F-48FF-0085-475D818F0F31}"
+"Region"="region_us"
+"Registration"="SOFTWARE\\Electronic Arts\\EA GAMES\\Need for Speed Underground 2\\ergc"
+"Suppression Exe"=""
+"SwapSize"="0"
+"NotFirstTime"=dword:00000001
+"VERSION"=dword:00000001
+"SIZE"=dword:00000078
+
+[HKEY_LOCAL_MACHINE\SOFTWARE\Wow6432Node\EA Games\Need for Speed Underground 2\1.0]
+"DisplayName"="Need for Speed Underground 2"
+"LanguageName"="English US"
+"Language"=dword:00000001
+
+[HKEY_LOCAL_MACHINE\SOFTWARE\Wow6432Node\Electronic Arts\EA GAMES\Need for Speed Underground 2\ergc]
+@="xxxxxxxxxxxxxxxxxxxx"
+
+; Uninstall (32-bit prefix)
+[HKEY_LOCAL_MACHINE\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\{909F8EBC-EC7F-48FF-0085-475D818F0F31}]
+"DisplayName"="Need for Speed Underground 2"
+"DisplayVersion"="1.0"
+"InstallLocation"="D:\\nfs"
+"Publisher"="Electronic Arts"
+"UninstallString"="\"D:\\nfs\\Uninst.isu\""
+"NoModify"=dword:00000001
+
+; Uninstall (64-bit Wine WOW64 – duplicate if your prefix uses Wow6432Node for 32-bit uninstallers)
+[HKEY_LOCAL_MACHINE\SOFTWARE\Wow6432Node\Microsoft\Windows\CurrentVersion\Uninstall\{909F8EBC-EC7F-48FF-0085-475D818F0F31}]
+"DisplayName"="Need for Speed Underground 2"
+"DisplayVersion"="1.0"
+"InstallLocation"="D:\\nfs"
+"Publisher"="Electronic Arts"
+"UninstallString"="\"D:\\nfs\\Uninst.isu\""
+"NoModify"=dword:00000001
