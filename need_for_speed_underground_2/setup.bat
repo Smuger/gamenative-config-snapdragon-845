@@ -13,20 +13,19 @@ echo.
 echo Each disc folder ^(e.g. iso1, iso2^) must contain compressed.zip.
 echo.
 
-set /p SZ=1/4 Relative path to 7z.exe ^(e.g. 7z.exe^): 
-set /p D1=2/4 Relative path to disc 1 folder ^(e.g. iso1^): 
-set /p D2=3/4 Relative path to disc 2 folder ^(e.g. iso2^): 
-set /p OD=4/4 Relative path to output folder ^(e.g. merged^): 
+set /p SZ=1/4 Relative path to 7z.exe [default: 7z.exe]: 
+if "%SZ%"=="" set "SZ=7z.exe"
+set /p D1=2/4 Relative path to disc 1 folder [default: nfs_ug2_1]: 
+if "%D1%"=="" set "D1=nfs_ug2_1"
+set /p D2=3/4 Relative path to disc 2 folder [default: nfs_ug2_2]: 
+if "%D2%"=="" set "D2=nfs_ug2_2"
+set /p OD=4/4 Relative path to output folder [default: nfs_ug2]: 
+if "%OD%"=="" set "OD=nfs_ug2"
 
 set "SZ=%SZ:"=%"
 set "D1=%D1:"=%"
 set "D2=%D2:"=%"
 set "OD=%OD:"=%"
-
-if "%SZ%"=="" goto :need_args
-if "%D1%"=="" goto :need_args
-if "%D2%"=="" goto :need_args
-if "%OD%"=="" goto :need_args
 
 for %%C in ("%SZ%" "%D1%" "%D2%" "%OD%") do (
   echo %%~C | findstr /r "[a-zA-Z]:\\" >nul 2>&1 && (
@@ -57,13 +56,6 @@ if /I not "!EXE_NAME!"=="7z.exe" if /I not "!EXE_NAME!"=="7za.exe" (
   pause
   exit /b 1
 )
-"%EXE_7Z%" i >nul 2>&1
-if errorlevel 2 (
-  echo ERROR: "%EXE_7Z%" did not run as 7-Zip CLI.
-  pause
-  exit /b 1
-)
-
 if not exist "%SRC1%\compressed.zip" (
   echo ERROR: Missing "%SRC1%\compressed.zip"
   pause
