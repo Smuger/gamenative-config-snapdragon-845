@@ -1,0 +1,64 @@
+# Builds need_for_speed_underground_2/x86_dll (Win32 Release -> version.dll).
+# Actions: GitHub (actions/checkout, actions/upload-artifact) + Microsoft (setup-msbuild).
+# Release upload: GitHub CLI (gh), preinstalled on windows-latest — same as https://cli.github.com/
+
+name: Build NFS UG2 version.dll (Win32)
+
+on:
+  push:
+    tags:
+      - "**"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: build-version-dll-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: windows-latest
+    defaults:
+      run:
+        shell: pwsh
+        working-directory: need_for_speed_underground_2/x86_dll
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+
+      - name: Add MSBuild to PATH
+        uses: microsoft/setup-msbuild@30375c66a4eea26614e0d39710365f22f8b0af57 # v3
+
+      - name: MSBuild Release Win32
+        run: >-
+          msbuild SecuROMLoader.vcxproj /restore /m /p:Configuration=Release
+          /p:Platform=Win32 /verbosity:minimal
+
+      - name: Verify output
+        run: |
+          $dll = "bin\Win32\Release\version.dll"
+          if (-not (Test-Path $dll)) { throw "Expected $dll" }
+          Get-Item $dll | Format-List FullName, Length, LastWriteTime
+
+      - name: Upload workflow artifact
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: version-win32-release
+          path: need_for_speed_underground_2/x86_dll/bin/Win32/Release/version.dll
+
+      - name: Create or update GitHub Release (tags only)
+        if: github.ref_type == 'tag'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          $tag = "${{ github.ref_name }}"
+          $dll = "bin\Win32\Release\version.dll"
+          $repo = "${{ github.repository }}"
+          gh release create $tag $dll --repo $repo --title "version.dll ($tag)" --generate-notes 2>$null
+          if ($LASTEXITCODE -ne 0) {
+            gh release upload $tag $dll --repo $repo --clobber
+            if ($LASTEXITCODE -ne 0) { throw "gh release upload failed" }
+          }

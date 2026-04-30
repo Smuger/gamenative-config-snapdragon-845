@@ -1,0 +1,13 @@
+{
+	"exeFile": "speed2.exe",
+	"logging": true,
+	"logFile": "version.log.txt",
+	"logCreateFile": true,
+	"UseVirusekMethod": true,
+	"CDROMDriveLetter": "F",
+	"CDROMVolumeName": "DISK2",
+	"CPUCount": 1,
+	"fileMappings": [
+		{"source": "F:\\*", "target": ".\\*"}
+	]
+}
