@@ -35,6 +35,7 @@ Config config;
 bool logCreateFile = false;
 int HWBPStage = 0;
 int HWBPCheckDone = 0;
+bool Securom7Confirmed = false;
 const char* CDROMDriveLetter = NULL;
 
 DWORD CDCheckStartAddr = 0;
