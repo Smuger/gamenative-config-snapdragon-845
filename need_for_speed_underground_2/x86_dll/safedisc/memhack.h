@@ -1,20 +1,10 @@
 #pragma once
 #include <windows.h>
 #include "../shared/minhook/minhook.h"
+#include "../shared/utils.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-
-#ifdef _M_X64
-#define PPEB __readgsqword(0x60)
-#else
-#define PPEB __readfsdword(0x30)
-#endif
-
-uintptr_t GetBaseAddress()
-{
-	return (uintptr_t)(*(PVOID*)(PPEB + 0x10));
-}
 
 bool ByteSearch(const BYTE* data, const BYTE* pattern, const bool* wildcard, int patternSize)
 {
@@ -93,49 +83,6 @@ bool CreateMinHook(LPVOID pTarget, LPVOID pDetour, LPVOID* result, bool enabled 
 	return (status == MH_OK);
 }
 
-void CreateConsole()
-{
-	AllocConsole();
-
-	FILE* fDummy;
-	freopen_s(&fDummy, "CONIN$", "r", stdin);
-	freopen_s(&fDummy, "CONOUT$", "w", stderr);
-	freopen_s(&fDummy, "CONOUT$", "w", stdout);
-}
-
-void ClearConsole()
-{
-	HANDLE hConsole = GetStdHandle(STD_OUTPUT_HANDLE);
-	CONSOLE_SCREEN_BUFFER_INFO csbi;
-	DWORD consoleSize;
-	DWORD charsWritten;
-	COORD coordScreen = { 0, 0 };
-
-	// Get the number of character cells in the current buffer
-	if (!GetConsoleScreenBufferInfo(hConsole, &csbi))
-		return;
-
-	consoleSize = csbi.dwSize.X * csbi.dwSize.Y;
-
-	// Fill the entire screen with blanks
-	FillConsoleOutputCharacter(hConsole, ' ', consoleSize, coordScreen, &charsWritten);
-	FillConsoleOutputAttribute(hConsole, csbi.wAttributes, consoleSize, coordScreen, &charsWritten);
-
-	// Put the cursor at the top-left corner
-	SetConsoleCursorPosition(hConsole, coordScreen);
-}
-
-void HideConsoleCursor() 
-{
-	HANDLE hConsole = GetStdHandle(STD_OUTPUT_HANDLE);
-
-	CONSOLE_CURSOR_INFO cursorInfo;
-	GetConsoleCursorInfo(hConsole, &cursorInfo);
-
-	cursorInfo.bVisible = FALSE;  // Set visibility to false
-	SetConsoleCursorInfo(hConsole, &cursorInfo);
-}
-
 void DumpToFile(const char* szFilename, BYTE* data, int dataSize)
 {
 	FILE* fout = fopen(szFilename, "wb");
@@ -146,27 +93,4 @@ void DumpToFile(const char* szFilename, BYTE* data, int dataSize)
 	}
 	else
 		printf("Could not DumpToFile: %s\n", szFilename);
-}
-
-bool GetExecutableDirectory(char* outPath, DWORD size) 
-{
-	char fullPath[MAX_PATH];
-
-	// Get full path to the executable
-	DWORD length = GetModuleFileNameA(NULL, fullPath, MAX_PATH);
-	if (length == 0 || length == MAX_PATH) 
-		return false; // Failed or path was truncated
-
-	// Copy to output buffer
-	strncpy(outPath, fullPath, size);
-	outPath[size - 1] = '\0';
-
-	char* lastBackslash = strrchr(outPath, '\\');
-	if (lastBackslash != NULL) 
-	{
-		*lastBackslash = '\0';
-		return true; 
-	}
-
-	return false;
 }
