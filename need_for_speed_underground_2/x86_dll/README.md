@@ -36,6 +36,7 @@ Resolved next to the **main executable** (see `securomloader.cpp` / `GetMainExec
 | `logFile` | string | Log path; may substitute `ProcessID` (see `securomloader.cpp`) |
 | `logCreateFile` | bool | Verbose `CreateFile` / attribute logging (default **true** if omitted) |
 | `UseVirusekMethod` | bool | Hook `FindWindowA` + SecuROM scan (`virusekmethod.cpp`) |
+| `VirusekProbeAtDllLoad` | bool | If **true**, runs `RunVirusekMethod()` once right after hooks enable (diagnostic; usually **no** fingerprint match until after unpack) |
 | `CDROMDriveLetter` | string | Spoofed disc letter (e.g. `F`) |
 | `CDROMVolumeName` | string | Volume label for that letter |
 | `fileMappings` | array of `{ "source", "target" }` | Path rewrites |

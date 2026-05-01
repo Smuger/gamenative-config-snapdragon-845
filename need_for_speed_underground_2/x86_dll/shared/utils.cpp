@@ -14,10 +14,13 @@ void SetLogging(bool enable, const char* logFileName)
 	InitializeCriticalSection(&log_critical_section);
 	if (enable && logFileName)
 	{
-		log_file = fopen(logFileName, /*"a+t"*/"wt");
-		log("Logging to file: %s\n", logFileName);
+		log_file = fopen(logFileName, "at");
 	}
 	loggingEnabled = enable;
+	if (enable && logFileName && log_file)
+	{
+		log("Logging to file: %s\n", logFileName);
+	}
 }
 
 void logc(WORD col, const char* fmt, ...)

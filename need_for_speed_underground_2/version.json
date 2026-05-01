@@ -4,6 +4,7 @@
 	"logFile": "version.log.txt",
 	"logCreateFile": true,
 	"UseVirusekMethod": true,
+	"VirusekProbeAtDllLoad": false,
 	"CDROMDriveLetter": "F",
 	"CDROMVolumeName": "DISK2",
 	"CPUCount": 1,

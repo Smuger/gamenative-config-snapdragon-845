@@ -776,4 +776,10 @@ void SecuROMLoader(HMODULE hModule)
 	}
 
 	log("Hooks Complete!\n");
+
+	if (config.GetBool("VirusekProbeAtDllLoad", false))
+	{
+		log("[Virusek] PROBE (VirusekProbeAtDllLoad): RunVirusekMethod at DLL init — SecuROM layout is usually absent or encrypted here; expect RESULT: NO matching fingerprint.\n");
+		RunVirusekMethod();
+	}
 }
