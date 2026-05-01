@@ -624,6 +624,8 @@ DWORD HookDecodeTableAddr = -1L, RelativeGrabberCall = 0;;
 DWORD FirstCopy = 0, SecondCopy = 0, ThirdCopy = 0;
 /** After first CdCheck2 patch, byte scan no longer matches  reuse RVA on AuthServ reload (same module may stay patched in memory). */
 static DWORD s_CdCheck2CallAddrRva = (DWORD)-1;
+/** SecServ has multiple copies of the CdCheck2 data-check helper; after patching the first, scan hits the wrong one  pin RVA. */
+static DWORD s_CdCheck2DataCheckAddrRva = (DWORD)-1;
 int amountToCopy = 0;
 BYTE* ThirdKey = new BYTE[1024];
 
@@ -861,7 +863,21 @@ HMODULE WINAPI LoadLibraryA_Hook(LPCSTR lpLibFileName)
 
 					DWORD StartAddrSecServ = (DWORD)hInstanceSecServ;
 					DWORD EndAddrSecServ = StartAddrSecServ + pinh->OptionalHeader.SizeOfImage;
-					DWORD CdCheck2DataCheckAddr = FindHexString(StartAddrSecServ, EndAddrSecServ, "33C93945FC0F94C18BC15F5E5BC9C3", "CdCheck2DataCheckAddr");
+					DWORD CdCheck2DataCheckAddr = (DWORD)-1;
+					if (s_CdCheck2DataCheckAddrRva != (DWORD)-1)
+					{
+						CdCheck2DataCheckAddr = StartAddrSecServ + s_CdCheck2DataCheckAddrRva;
+						logc(FOREGROUND_GREEN, "CdCheck2DataCheckAddr: using cached SecServ RVA %08X -> %08X\n", s_CdCheck2DataCheckAddrRva, CdCheck2DataCheckAddr);
+					}
+					else
+					{
+						CdCheck2DataCheckAddr = FindHexString(StartAddrSecServ, EndAddrSecServ, "33C93945FC0F94C18BC15F5E5BC9C3", "CdCheck2DataCheckAddr");
+						if (CdCheck2DataCheckAddr != (DWORD)-1)
+						{
+							s_CdCheck2DataCheckAddrRva = CdCheck2DataCheckAddr - StartAddrSecServ;
+							logc(FOREGROUND_GREEN, "CdCheck2DataCheckAddr: caching SecServ RVA %08X\n", s_CdCheck2DataCheckAddrRva);
+						}
+					}
 					if (CdCheck2DataCheckAddr != -1L)
 					{
 						DWORD CdCheck2DataCheckAddrFix =  CdCheck2DataCheckAddr + 5;
