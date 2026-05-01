@@ -328,6 +328,41 @@ HANDLE CheckForSecDrv(LPCSTR lpFileName, CreateFileA_typedef CreateFileOrig)
 	return ret;
 }
 
+/** Bare-name SafeDisc locale probes (SD0409.dll): often no file on disk when SD3 is inlined ù spoof success without requiring media. */
+static bool SafeDisc_IsSdLocaleDllBaseName(const char* base)
+{
+	if (!base)
+		return false;
+	size_t n = strlen(base);
+	if (n < 10 || n > 16)
+		return false;
+	if (_strnicmp(base, "SD", 2) != 0)
+		return false;
+	if (_stricmp(base + n - 4, ".dll") != 0)
+		return false;
+	return true;
+}
+
+static bool SafeDisc_IsSdLocaleDllPathA(LPCSTR path)
+{
+	if (!path)
+		return false;
+	const char* base = strrchr(path, '\\');
+	base = base ? base + 1 : path;
+	const char* alt = strrchr(path, '/');
+	if (alt && (!base || alt > base))
+		base = alt + 1;
+	return SafeDisc_IsSdLocaleDllBaseName(base);
+}
+
+static bool SafeDisc_IsSdLocaleDllPathW(LPCWSTR path)
+{
+	char narrow[MAX_PATH * 4];
+	if (!path || WideCharToMultiByte(CP_ACP, 0, path, -1, narrow, sizeof(narrow), NULL, NULL) <= 0)
+		return false;
+	return SafeDisc_IsSdLocaleDllPathA(narrow);
+}
+
 HANDLE WINAPI CreateFileA_Hook(LPCSTR lpFileName, DWORD dwDesiredAccess, DWORD dwShareMode, LPSECURITY_ATTRIBUTES lpSecurityAttributes, DWORD dwCreationDisposition, DWORD dwFlagsAndAttributes, HANDLE hTemplateFile)
 {
 	std::string strFileName;
@@ -335,6 +370,19 @@ HANDLE WINAPI CreateFileA_Hook(LPCSTR lpFileName, DWORD dwDesiredAccess, DWORD d
 	{
 		strFileName = config.GetFileMapping(lpFileName);
 		lpFileName = strFileName.c_str();
+	}
+
+	if (config.GetBool("SafeDiscSupport", false) && config.GetBool("SafeDiscSpoofSdLocaleProbe", true)
+		&& lpFileName && SafeDisc_IsSdLocaleDllPathA(lpFileName))
+	{
+		HANDLE hNul = CreateFileA_Orig("NUL", GENERIC_READ, FILE_SHARE_READ | FILE_SHARE_WRITE, NULL, OPEN_EXISTING, 0, NULL);
+		if (hNul != INVALID_HANDLE_VALUE)
+		{
+			log("SafeDisc: CreateFileA SD locale probe \"%s\" -> NUL\n", lpFileName);
+			if (logCreateFile)
+				log("CreateFileA_Hook Hook - lpFileName: %s ret: %08X\n", lpFileName, (unsigned)(uintptr_t)hNul);
+			return hNul;
+		}
 	}
 
 	HANDLE ret = CheckForSecDrv(lpFileName, CreateFileA_Orig);
@@ -367,6 +415,20 @@ HANDLE WINAPI CreateFileA_Hook_KBase(LPCSTR lpFileName, DWORD dwDesiredAccess, D
 		strFileName = config.GetFileMapping(lpFileName);
 		lpFileName = strFileName.c_str();
 	}
+
+	if (config.GetBool("SafeDiscSupport", false) && config.GetBool("SafeDiscSpoofSdLocaleProbe", true)
+		&& lpFileName && SafeDisc_IsSdLocaleDllPathA(lpFileName))
+	{
+		HANDLE hNul = CreateFileA_Orig_KBase("NUL", GENERIC_READ, FILE_SHARE_READ | FILE_SHARE_WRITE, NULL, OPEN_EXISTING, 0, NULL);
+		if (hNul != INVALID_HANDLE_VALUE)
+		{
+			log("SafeDisc: CreateFileA_KBase SD locale probe \"%s\" -> NUL\n", lpFileName);
+			if (logCreateFile)
+				log("CreateFileA_Hook_KBase Hook - lpFileName: %s ret: %08X\n", lpFileName, (unsigned)(uintptr_t)hNul);
+			return hNul;
+		}
+	}
+
 	HANDLE ret = CheckForSecDrv(lpFileName, CreateFileA_Orig_KBase);
 	if (ret == INVALID_HANDLE_VALUE)
 		ret = CreateFileA_Orig_KBase(lpFileName, dwDesiredAccess, dwShareMode, lpSecurityAttributes, dwCreationDisposition, dwFlagsAndAttributes, hTemplateFile);
@@ -387,6 +449,19 @@ HANDLE WINAPI CreateFileW_Hook(LPCWSTR lpFileName, DWORD dwDesiredAccess, DWORD 
 		std::string mapped = config.GetFileMapping(wideStr);
 		tempPathHolder = mapped.c_str();
 		usePath = (LPCWSTR)tempPathHolder;
+	}
+
+	if (config.GetBool("SafeDiscSupport", false) && config.GetBool("SafeDiscSpoofSdLocaleProbe", true)
+		&& usePath && SafeDisc_IsSdLocaleDllPathW(usePath))
+	{
+		HANDLE hNul = CreateFileW_Orig(L"NUL", GENERIC_READ, FILE_SHARE_READ | FILE_SHARE_WRITE, NULL, OPEN_EXISTING, 0, NULL);
+		if (hNul != INVALID_HANDLE_VALUE)
+		{
+			log("SafeDisc: CreateFileW SD locale probe \"%ls\" -> NUL\n", usePath);
+			if (logCreateFile && wcscmp(usePath, L"CONOUT$") != 0)
+				log("CreateFileW_Hook - lpFileName: %ls ret: %08X\n", usePath, (unsigned)(uintptr_t)hNul);
+			return hNul;
+		}
 	}
 
 	HANDLE ret = CheckForSecDrvW(usePath, CreateFileW_Orig);
@@ -424,6 +499,19 @@ HANDLE WINAPI CreateFileW_Hook_KBase(LPCWSTR lpFileName, DWORD dwDesiredAccess, 
 		std::string mapped = config.GetFileMapping(wideStr);
 		tempPathHolder = mapped.c_str();
 		usePath = (LPCWSTR)tempPathHolder;
+	}
+
+	if (config.GetBool("SafeDiscSupport", false) && config.GetBool("SafeDiscSpoofSdLocaleProbe", true)
+		&& usePath && SafeDisc_IsSdLocaleDllPathW(usePath))
+	{
+		HANDLE hNul = CreateFileW_Orig_KBase(L"NUL", GENERIC_READ, FILE_SHARE_READ | FILE_SHARE_WRITE, NULL, OPEN_EXISTING, 0, NULL);
+		if (hNul != INVALID_HANDLE_VALUE)
+		{
+			log("SafeDisc: CreateFileW_KBase SD locale probe \"%ls\" -> NUL\n", usePath);
+			if (logCreateFile && wcscmp(usePath, L"CONOUT$") != 0)
+				log("CreateFileW_Hook_KBase - lpFileName: %ls ret: %08X\n", usePath, (unsigned)(uintptr_t)hNul);
+			return hNul;
+		}
 	}
 
 	HANDLE ret = CheckForSecDrvW(usePath, CreateFileW_Orig_KBase);
@@ -633,6 +721,21 @@ HMODULE WINAPI LoadLibraryW_Hook(LPCWSTR lpLibFileName)
 			}
 		}
 	}
+
+	if (!ret && lpLibFileName && config.GetBool("SafeDiscSupport", false) && config.GetBool("SafeDiscSpoofSdLocaleProbe", true))
+	{
+		char narrow[MAX_PATH * 4];
+		if (WideCharToMultiByte(CP_ACP, 0, lpLibFileName, -1, narrow, sizeof(narrow), NULL, NULL) > 0)
+		{
+			const char* base = LastPathComponent(narrow);
+			if (SafeDisc_IsSdLocaleDllBaseName(base))
+			{
+				ret = hOurModule ? hOurModule : GetModuleHandle(NULL);
+				log("SafeDisc: LoadLibraryW spoof \"%ls\" -> %p\n", lpLibFileName, (void*)ret);
+			}
+		}
+	}
+
 	return ret;
 }
 
@@ -649,6 +752,16 @@ HMODULE WINAPI LoadLibraryA_Hook(LPCSTR lpLibFileName)
 		{
 			log("LoadLibraryA_Hook: temp-dir miss \"%s\" -> retry LoadLibraryA(\"%s\")\n", lpLibFileName, base);
 			ret = LoadLibraryA_Orig(base);
+		}
+	}
+
+	if (!ret && lpLibFileName && config.GetBool("SafeDiscSupport", false) && config.GetBool("SafeDiscSpoofSdLocaleProbe", true))
+	{
+		const char* base = LastPathComponent(lpLibFileName);
+		if (SafeDisc_IsSdLocaleDllBaseName(base))
+		{
+			ret = hOurModule ? hOurModule : GetModuleHandle(NULL);
+			log("SafeDisc: LoadLibraryA spoof \"%s\" -> %p\n", lpLibFileName, (void*)ret);
 		}
 	}
 
@@ -680,6 +793,11 @@ HMODULE WINAPI LoadLibraryA_Hook(LPCSTR lpLibFileName)
 			log("CdCheckDllLoadAddr = %08X\n", CdCheckDllLoadAddr);
 
 			DWORD HookDecodeTable = FindHexString(StartAddr, EndAddr, "83EC1C8BCC8965FCFF7508E8????????8B0D????????E8????????8BC8", "HookDecodeTable");
+			if (HookDecodeTable == -1L)
+			{
+				/* Same shape, different sub esp, imm (SecServ 3.05.x builds). */
+				HookDecodeTable = FindHexString(StartAddr, EndAddr, "83EC??8BCC8965FCFF7508E8????????8B0D????????E8????????8BC8", "HookDecodeTable v2");
+			}
 			if (HookDecodeTable != -1L)
 			{
 				HookDecodeTableAddr = HookDecodeTable + 0x1E;
