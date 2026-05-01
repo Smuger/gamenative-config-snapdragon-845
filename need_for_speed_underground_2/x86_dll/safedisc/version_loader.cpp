@@ -570,6 +570,44 @@ void WINAPI CallDecrypt(DWORD tableNo)
 	}
 }
 
+/** SafeDisc unpack dirs use names like ~e5.0001 or ~df394b.tmp  games sometimes call LoadLibrary with system DLL names under that folder (file not there). */
+static bool SafeDisc_TempStylePath(LPCSTR path)
+{
+	if (!path)
+		return false;
+	return strstr(path, "~e") != NULL || strstr(path, ".dir.") != NULL
+		|| strstr(path, "~df") != NULL || strstr(path, "~ef") != NULL || strstr(path, "~de") != NULL;
+}
+
+static const char* LastPathComponent(LPCSTR path)
+{
+	const char* b = strrchr(path, '\\');
+	const char* f = strrchr(path, '/');
+	if (b && (!f || b > f))
+		return b + 1;
+	if (f)
+		return f + 1;
+	return path;
+}
+
+static bool IsKnownWindowsSystemDllBaseName(const char* base)
+{
+	static const char* kDlls[] = {
+		"user32.dll", "gdi32.dll", "advapi32.dll", "shell32.dll",
+		"kernel32.dll", "kernelbase.dll", "ole32.dll", "oleaut32.dll",
+		"msvcrt.dll", "ws2_32.dll", "imm32.dll", "comdlg32.dll",
+		"comctl32.dll", "shlwapi.dll", "rpcrt4.dll", "winmm.dll",
+		"version.dll", "setupapi.dll", "iphlpapi.dll", "dnsapi.dll",
+		"sechost.dll", "bcrypt.dll", "crypt32.dll", "wintrust.dll",
+	};
+	for (size_t i = 0; i < sizeof(kDlls) / sizeof(kDlls[0]); i++)
+	{
+		if (_stricmp(base, kDlls[i]) == 0)
+			return true;
+	}
+	return false;
+}
+
 static bool SafeDisc_IsLocaleDllBaseName(const char* base)
 {
 	if (!base)
@@ -617,6 +655,16 @@ HMODULE WINAPI LoadLibraryA_Hook(LPCSTR lpLibFileName)
 	static DWORD TableClass = 0;
 
 	HMODULE ret = LoadLibraryA_Orig(lpLibFileName);
+
+	if (!ret && lpLibFileName && SafeDisc_TempStylePath(lpLibFileName))
+	{
+		const char* base = LastPathComponent(lpLibFileName);
+		if (IsKnownWindowsSystemDllBaseName(base))
+		{
+			log("LoadLibraryA_Hook: temp-dir miss \"%s\" -> retry LoadLibraryA(\"%s\")\n", lpLibFileName, base);
+			ret = LoadLibraryA_Orig(base);
+		}
+	}
 
 	if (!ret && lpLibFileName && config.GetBool("SafeDiscSupport", false))
 	{
