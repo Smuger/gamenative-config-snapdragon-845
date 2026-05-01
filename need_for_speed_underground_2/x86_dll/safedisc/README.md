@@ -16,9 +16,15 @@ Reference implementation: **[nckstwrt/SafeDiscLoader2](https://github.com/nckstw
 
 Enable **`"SafeDiscSupport": true`** in `version.json` (next to the main `.exe`).
 
+## Need for Speed Underground 2 (upstream note)
+
+[SafeDiscLoader2’s tested-games list](https://github.com/nckstwrt/SafeDiscLoader2/blob/main/README.md) records NFS UG2 as **SafeDisc 3.05.10** with a **missing normal version string**, and adds that the game **still needs CD 2** for a **non–SafeDisc check**: it **looks for `bin.dat` from the disc**. That is the important content requirement—mount **disc 2** (or an equivalent image) so that path resolves; **SafeDiscLoader2 does not say you must place `SD0409.dll` next to `speed2.exe`.**
+
+**Typical layout:** the game may be installed on **`A:\`** while **disc 2** is **`F:\`** (or another letter). **`CDROMDriveLetter`** is only for the **play disc**, not the install drive.
+
 ## Locale DLLs (`SD*.dll`)
 
-If **`LoadLibraryA("SD0409.dll")`** fails (bare name searches only cwd/PATH), copy **`SD0409.dll`** from the game CD next to **`speed2.exe`**, or rely on **`SafeDiscSupport`** retrying **`exeDir\SD0409.dll`** then **`CDROMDriveLetter:\SD0409.dll`** (see **`SecuROMLoader`** / **`version_loader.cpp`**).
+SafeDisc may **`LoadLibrary`** bare names like **`SD0409.dll`**. Those files are part of the **retail disc layout** (often the CD root), not something you are expected to ship beside the exe. With **`"SafeDiscSupport": true`**, this project retries **`exeDir\SD0409.dll`** then **`CDROMDriveLetter:\SD0409.dll`** (and related **`CreateFile`** redirects in **`version_loader.cpp`**) so a **properly mounted disc or ISO** at the configured letter matches what the original installer media provided—no separate “copy locale DLL next to the game” step is required if **`CDROMDriveLetter`** points at that volume.
 
 ## What this does (short)
 
@@ -27,7 +33,7 @@ If **`LoadLibraryA("SD0409.dll")`** fails (bare name searches only cwd/PATH), co
 - Redirects opens of **`\\.\Secdrv`** to a **local dummy handle** (`NUL` / emulated open) so the game stops looking for a kernel driver.
 - May **patch game code in RAM** (decrypt tables, CD-check hooks) using addresses in the **loaded game executable and its DLLs** only.
 - Optional **`CreateProcess` → inject** path loads **this same `version.dll` from disk** into a child process (local path from `GetModuleFileName`); it does not fetch binaries from the internet.
-- **Locale DLLs** (`SD0409.dll`, etc.) are loaded only from **paths the game requests** (exe directory, drive letter from config) or from the **OS search path**—same as normal `LoadLibrary` behavior, not a downloader.
+- **Locale DLLs** (`SD0409.dll`, etc.): bare-name resolution is extended to **`CDROMDriveLetter`** (and optionally exe dir) so it matches **retail disc layout** when the play disc is mounted—same as normal `LoadLibrary` once paths resolve, not a downloader.
 
 ## Security / network
 

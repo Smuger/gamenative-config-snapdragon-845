@@ -13,10 +13,5 @@
 	"CDROMDriveLetter": "F",
 	"CDROMVolumeName": "DISK2",
 	"CPUCount": 1,
-	"fileMappings": [
-		{
-			"source": "F:\\*",
-			"target": ".\\*"
-		}
-	]
+	"fileMappings": []
 }

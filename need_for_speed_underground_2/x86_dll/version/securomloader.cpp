@@ -70,7 +70,7 @@ static HANDLE SafeDisc_OpenSecDrvW(LPCWSTR lpFileName, CreateFileW_typedef pfn)
 	return h;
 }
 
-/** SafeDisc loads locale DLLs as bare names (e.g. SD0409.dll = English). Often only on disc root — retry exe dir then CD letter from config. */
+/** SafeDisc loads locale DLLs as bare names (e.g. SD0409.dll). Retail media typically has them on the disc root; retry exe dir (optional) then CDROMDriveLetter from config. */
 static bool SafeDisc_IsLocaleDllBaseName(const char* base)
 {
 	if (!base)
