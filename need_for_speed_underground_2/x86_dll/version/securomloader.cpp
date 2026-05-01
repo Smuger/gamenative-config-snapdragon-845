@@ -17,9 +17,13 @@ NtDeviceIoControlFile_typedef NtDeviceIoControlFile_Orig;
 IsBadReadPtr_typedef IsBadReadPtr_Orig;
 GetLogicalDrives_typedef GetLogicalDrives_Orig;
 GetDriveTypeA_typedef GetDriveTypeA_Orig;
+GetDriveTypeW_typedef GetDriveTypeW_Orig;
 GetVolumeInformationA_typedef GetVolumeInformationA_Orig;
+GetVolumeInformationW_typedef GetVolumeInformationW_Orig;
 CreateFileA_typedef CreateFileA_Orig;
 CreateFileA_typedef CreateFileA_Orig_KBase;
+CreateFileW_typedef CreateFileW_Orig;
+CreateFileW_typedef CreateFileW_Orig_KBase;
 GetFileAttributesA_typedef GetFileAttributesA_Orig;
 GetFileAttributesW_typedef GetFileAttributesW_Orig;
 FindFirstFileA_typedef FindFirstFileA_Orig;
@@ -102,6 +106,21 @@ UINT WINAPI GetDriveTypeA_Hook(LPCSTR lpRootPathName)
 	return GetDriveTypeA_Orig(lpRootPathName);
 }
 
+UINT WINAPI GetDriveTypeW_Hook(LPCWSTR lpRootPathName)
+{
+	if (CDROMDriveLetter && lpRootPathName && lpRootPathName[0])
+	{
+		wchar_t d = (wchar_t)towupper((unsigned char)CDROMDriveLetter[0]);
+		if (towupper(lpRootPathName[0]) == d)
+		{
+			logc(FOREGROUND_GREEN, "GetDriveTypeW_Hook = %ls IS A CDROM!\n", lpRootPathName ? lpRootPathName : L"NULL");
+			return DRIVE_CDROM;
+		}
+	}
+	log("GetDriveTypeW_Hook = %ls\n", lpRootPathName ? lpRootPathName : L"NULL");
+	return GetDriveTypeW_Orig(lpRootPathName);
+}
+
 BOOL WINAPI GetVolumeInformationA_Hook(LPCSTR lpRootPathName, LPSTR lpVolumeNameBuffer, DWORD nVolumeNameSize, LPDWORD lpVolumeSerialNumber, LPDWORD lpMaximumComponentLength, LPDWORD lpFileSystemFlags, LPSTR lpFileSystemNameBuffer, DWORD nFileSystemNameSize)
 {
 	logc(FOREGROUND_BLUE, "GetVolumeInformationA_Hook: lpRootPathName: %s\n", lpRootPathName ? lpRootPathName : "NULL");
@@ -118,6 +137,27 @@ BOOL WINAPI GetVolumeInformationA_Hook(LPCSTR lpRootPathName, LPSTR lpVolumeName
 			logc(FOREGROUND_BLUE, "GetVolumeInformationA_Hook: Replacing FileSystemName with: %s\n", lpFileSystemNameBuffer);
 		}
 		ret = TRUE;
+	}
+	return ret;
+}
+
+BOOL WINAPI GetVolumeInformationW_Hook(LPCWSTR lpRootPathName, LPWSTR lpVolumeNameBuffer, DWORD nVolumeNameSize, LPDWORD lpVolumeSerialNumber, LPDWORD lpMaximumComponentLength, LPDWORD lpFileSystemFlags, LPWSTR lpFileSystemNameBuffer, DWORD nFileSystemNameSize)
+{
+	logc(FOREGROUND_BLUE, "GetVolumeInformationW_Hook: lpRootPathName: %ls\n", lpRootPathName ? lpRootPathName : L"NULL");
+	BOOL ret = GetVolumeInformationW_Orig(lpRootPathName, lpVolumeNameBuffer, nVolumeNameSize, lpVolumeSerialNumber, lpMaximumComponentLength, lpFileSystemFlags, lpFileSystemNameBuffer, nFileSystemNameSize);
+	const char* CDROMVolumeName = config.GetValue("CDROMVolumeName");
+	if (CDROMVolumeName && CDROMDriveLetter && lpVolumeNameBuffer && lpRootPathName && lpRootPathName[0]
+		&& towupper(lpRootPathName[0]) == (wchar_t)towupper((unsigned char)CDROMDriveLetter[0]))
+	{
+		wchar_t wvol[256];
+		if (MultiByteToWideChar(CP_ACP, 0, CDROMVolumeName, -1, wvol, 256) > 0 && wcslen(wvol) < nVolumeNameSize)
+		{
+			wcscpy(lpVolumeNameBuffer, wvol);
+			logc(FOREGROUND_BLUE, "GetVolumeInformationW_Hook: Replacing VolumeName with: %ls\n", lpVolumeNameBuffer);
+			if (lpFileSystemNameBuffer && nFileSystemNameSize > 5)
+				wcscpy(lpFileSystemNameBuffer, L"CDFS");
+			ret = TRUE;
+		}
 	}
 	return ret;
 }
@@ -162,6 +202,60 @@ HANDLE WINAPI CreateFileA_Hook_KBase(LPCSTR lpFileName, DWORD dwDesiredAccess, D
 	if (logCreateFile && lpFileName && _stricmp(lpFileName, "CONOUT$") != 0)
 		log("CreateFileA_Hook_KBase Hook - lpFileName: %s ret: %08X\n", lpFileName == NULL ? "!NULL!" : lpFileName, ret);
 
+	return ret;
+}
+
+HANDLE WINAPI CreateFileW_Hook(LPCWSTR lpFileName, DWORD dwDesiredAccess, DWORD dwShareMode, LPSECURITY_ATTRIBUTES lpSecurityAttributes, DWORD dwCreationDisposition, DWORD dwFlagsAndAttributes, HANDLE hTemplateFile)
+{
+	NString tempPathHolder;
+	LPCWSTR usePath = lpFileName;
+	if (lpFileName)
+	{
+		NString wideStr(lpFileName);
+		std::string mapped = config.GetFileMapping(wideStr);
+		tempPathHolder = mapped.c_str();
+		usePath = (LPCWSTR)tempPathHolder;
+	}
+	if (CDROMDriveLetter && usePath)
+	{
+		wchar_t pattern[16];
+		swprintf_s(pattern, L"\\\\.\\%c:", (wchar_t)towupper((unsigned char)CDROMDriveLetter[0]));
+		if (_wcsicmp(usePath, pattern) == 0)
+		{
+			logc(FOREGROUND_LIME, "Redirecting CreateFileW (kernel32) of CDROM drive %ls to NUL\n", pattern);
+			usePath = L"NUL";
+		}
+	}
+	HANDLE ret = CreateFileW_Orig(usePath, dwDesiredAccess, dwShareMode, lpSecurityAttributes, dwCreationDisposition, dwFlagsAndAttributes, hTemplateFile);
+	if (logCreateFile && usePath && wcscmp(usePath, L"CONOUT$") != 0)
+		log("CreateFileW_Hook - lpFileName: %ls ret: %08X\n", usePath, ret);
+	return ret;
+}
+
+HANDLE WINAPI CreateFileW_Hook_KBase(LPCWSTR lpFileName, DWORD dwDesiredAccess, DWORD dwShareMode, LPSECURITY_ATTRIBUTES lpSecurityAttributes, DWORD dwCreationDisposition, DWORD dwFlagsAndAttributes, HANDLE hTemplateFile)
+{
+	NString tempPathHolder;
+	LPCWSTR usePath = lpFileName;
+	if (lpFileName)
+	{
+		NString wideStr(lpFileName);
+		std::string mapped = config.GetFileMapping(wideStr);
+		tempPathHolder = mapped.c_str();
+		usePath = (LPCWSTR)tempPathHolder;
+	}
+	if (CDROMDriveLetter && usePath)
+	{
+		wchar_t pattern[16];
+		swprintf_s(pattern, L"\\\\.\\%c:", (wchar_t)towupper((unsigned char)CDROMDriveLetter[0]));
+		if (_wcsicmp(usePath, pattern) == 0)
+		{
+			logc(FOREGROUND_LIME, "Redirecting CreateFileW (kernelbase) of CDROM drive %ls to NUL\n", pattern);
+			usePath = L"NUL";
+		}
+	}
+	HANDLE ret = CreateFileW_Orig_KBase(usePath, dwDesiredAccess, dwShareMode, lpSecurityAttributes, dwCreationDisposition, dwFlagsAndAttributes, hTemplateFile);
+	if (logCreateFile && usePath && wcscmp(usePath, L"CONOUT$") != 0)
+		log("CreateFileW_Hook_KBase - lpFileName: %ls ret: %08X\n", usePath, ret);
 	return ret;
 }
 
@@ -521,6 +615,33 @@ void SecuROMLoader(HMODULE hModule)
 		}
 	}
 
+	FARPROC pCreateFileW_K32 = NULL, pCreateFileW_KBase = NULL;
+	pCreateFileW_K32 = GetProcAddress(hKernel32, "CreateFileW");
+	if (hKernelBase)
+		pCreateFileW_KBase = GetProcAddress(hKernelBase, "CreateFileW");
+
+	if (pCreateFileW_K32 && pCreateFileW_KBase && pCreateFileW_K32 != pCreateFileW_KBase)
+	{
+		if (MH_CreateHook(pCreateFileW_K32, CreateFileW_Hook, (LPVOID*)&CreateFileW_Orig) != MH_OK)
+		{
+			log("Unable to hook CreateFileW from kernel32.dll\n");
+			return;
+		}
+		if (MH_CreateHook(pCreateFileW_KBase, CreateFileW_Hook_KBase, (LPVOID*)&CreateFileW_Orig_KBase) != MH_OK)
+		{
+			log("Unable to hook CreateFileW from kernelbase.dll\n");
+			return;
+		}
+	}
+	else if (pCreateFileW_K32)
+	{
+		if (MH_CreateHook(pCreateFileW_K32, CreateFileW_Hook, (LPVOID*)&CreateFileW_Orig) != MH_OK)
+		{
+			log("Unable to hook CreateFileW from kernel32.dll\n");
+			return;
+		}
+	}
+
 	if (GetFileAttributes("iphlpapi_virusek.dll") != INVALID_FILE_ATTRIBUTES)
 	{
 		logc(FOREGROUND_PINK, "virusek's iphlpapi.dll is detected!!!!!\n");
@@ -587,10 +708,22 @@ void SecuROMLoader(HMODULE hModule)
 		return;
 	}
 
+	if (MH_CreateHookApi(L"kernel32", "GetDriveTypeW", &GetDriveTypeW_Hook, reinterpret_cast<LPVOID*>(&GetDriveTypeW_Orig)) != MH_OK)
+	{
+		log("Unable to hook GetDriveTypeW\n");
+		return;
+	}
+
 	if (MH_CreateHookApi(L"kernel32", "GetVolumeInformationA", &GetVolumeInformationA_Hook, reinterpret_cast<LPVOID*>(&GetVolumeInformationA_Orig)) != MH_OK)
 	{
 		log("Unable to hook GetVolumeInformationA\n");
 		return; 
+	}
+
+	if (MH_CreateHookApi(L"kernel32", "GetVolumeInformationW", &GetVolumeInformationW_Hook, reinterpret_cast<LPVOID*>(&GetVolumeInformationW_Orig)) != MH_OK)
+	{
+		log("Unable to hook GetVolumeInformationW\n");
+		return;
 	}
 
 	if ((status = MH_CreateHookApi(L"kernel32", "GetFileAttributesA", &GetFileAttributesA_Hook, reinterpret_cast<LPVOID*>(&GetFileAttributesA_Orig))) != MH_OK)

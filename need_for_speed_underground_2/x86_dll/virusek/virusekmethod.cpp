@@ -30,13 +30,15 @@ __declspec(naked) void JmpToPtr3()
 
 DWORD CheckRegion(DWORD start, DWORD size, DWORD exeStart, DWORD exeEnd)
 {
-	logc(FOREGROUND_GREEN, "CheckRegion: Start: %08X Size: %08X\n", start, size);
+	logc(FOREGROUND_GREEN, "CheckRegion: Start: %08X Size: %08X (exe range %08X..%08X)\n", start, size, exeStart, exeEnd);
 	BYTE* ptr = (BYTE*)start;
 	size -= 0x48;
+	DWORD candidatesSeen = 0;
 	for (DWORD i = 0; i < size; i++)
 	{
 		if (ptr[i + 0] == 0x08 && ptr[i + 1] == 0x00 && ptr[i + 2] == 0x00 && ptr[i + 3] == 0x00 && ptr[i + 4] == 0x00 && ptr[i + 5] == 0x00 && ptr[i + 6] == 0x00 && ptr[i + 7] == 0x00)
 		{
+			candidatesSeen++;
 			// Check Pointers
 			DWORD ptr1Addr = i + 0x38;
 			DWORD ptr1 = *(DWORD*)&ptr[ptr1Addr];	// Map to Ptr3
@@ -45,11 +47,13 @@ DWORD CheckRegion(DWORD start, DWORD size, DWORD exeStart, DWORD exeEnd)
 			DWORD ptr3Addr = i + 0x2C;
 			RemapToPtr3 = *(DWORD*)&ptr[ptr3Addr];	// Function to Map to
 
+			logc(FOREGROUND_YELLOW, "[Virusek] Candidate layout at %08X: Ptr1=%08X Ptr2=%08X Ptr3=%08X\n", start + i, ptr1, ptr2, RemapToPtr3);
+
 			if (ptr1 < exeStart || ptr1 > exeEnd ||
 				ptr2 < exeStart || ptr2 > exeEnd ||
 				RemapToPtr3 < exeStart || RemapToPtr3 > exeEnd)
 			{
-				//logc(FOREGROUND_YELLOW, "CheckRegion: Failed pointer checks at %08X (Ptr1: %08X Ptr2: %08X Ptr3: %08X)\n", start + i, ptr1, ptr2, ptr3);
+				logc(FOREGROUND_YELLOW, "[Virusek]   rejected: pointer(s) outside main module image\n");
 				continue;
 			}
 
@@ -57,9 +61,13 @@ DWORD CheckRegion(DWORD start, DWORD size, DWORD exeStart, DWORD exeEnd)
 			if (ptr[ptr1Addr - 1] != 0 || ptr[ptr1Addr + 4] != 0x5 ||
 				ptr[ptr2Addr - 1] != 0 || ptr[ptr2Addr + 4] != 0xE ||
 				ptr[ptr3Addr - 1] != 0 || ptr[ptr3Addr + 4] != 0x4)
+			{
+				logc(FOREGROUND_YELLOW, "[Virusek]   rejected: suffix bytes (expect 0/5/E/4 pattern)\n");
 				continue;
+			}
 
 			logc(FOREGROUND_GREEN, "CheckRegion: Found SecuROM region to patch at %08X  (Ptr1: %08X Ptr2: %08X Ptr3: %08X)\n", start + i, ptr1, ptr2, RemapToPtr3);
+			log("[Virusek] APPLYING in-memory patch at RVA+%08X (Ptr1->JmpToPtr3, Ptr2->Ret0)\n", (unsigned)(start + i - exeStart));
 
 			*(DWORD*)&ptr[ptr1Addr] = (DWORD)&JmpToPtr3;
 			*(DWORD*)&ptr[ptr2Addr] = (DWORD)&Ret0;
@@ -68,51 +76,84 @@ DWORD CheckRegion(DWORD start, DWORD size, DWORD exeStart, DWORD exeEnd)
 			return i;
 		}
 	}
+	if (candidatesSeen > 0)
+		log("[Virusek] CheckRegion %08X: %u candidate layout(s) seen, none passed validation\n", start, (unsigned)candidatesSeen);
 	return -1L;
 }
 
 void RunVirusekMethod()
 {
 	DWORD exeStart = (DWORD)GetModuleHandle(NULL);
-	DWORD exeEnd = exeStart + GetExeSizeInMemory();
+	DWORD exeSize = GetExeSizeInMemory();
+	DWORD exeEnd = exeStart + exeSize;
+
+	log("[Virusek] ===== RunVirusekMethod (SecuROM 7/8 in-image patch) =====\n");
+	log("[Virusek] Main module: base=%08X size=%08X end=%08X\n", exeStart, exeSize, exeEnd);
 
 	MEMORY_BASIC_INFORMATION mbi;
 	DWORD AddrFound = -1L;
 	DWORD ret = VirtualQuery((void*)0, &mbi, sizeof(mbi));
-	if (ret != 0)
+	DWORD regionsTotal = 0;
+	DWORD regionsExecutableGuard = 0;
+	if (ret == 0)
 	{
-		while (true)
-		{
-			if (mbi.State == 0x1000 && ((mbi.Protect & 0xEE) != 0) && ((mbi.Protect & 0x100) == 0))
-			{
-				DWORD Addr = CheckRegion((DWORD)mbi.BaseAddress, mbi.RegionSize, exeStart, exeEnd);
-				if (Addr != 0xFFFFFFFF)
-				{
-					AddrFound = Addr;
-					break;	// Found it?
-				}
-			}
-
-			if (mbi.RegionSize <= 0)
-				break;
-
-			ret = VirtualQuery((void*)(((DWORD)mbi.BaseAddress) + mbi.RegionSize), &mbi, sizeof(mbi));
-			if (ret == 0)
-				break;
-		}
-		if (AddrFound != -1L)
-		{
-			logc(FOREGROUND_BROWN, "FindWindowA_Hook: Found SecuROM region at %08X\n", AddrFound);
-		}
+		log("[Virusek] VirtualQuery(0) failed; cannot walk regions — abort scan\n");
+		return;
 	}
+
+	while (true)
+	{
+		regionsTotal++;
+		const bool guard =
+			mbi.State == 0x1000 &&
+			((mbi.Protect & 0xEE) != 0) &&
+			((mbi.Protect & 0x100) == 0);
+
+		if (guard)
+		{
+			regionsExecutableGuard++;
+			DWORD Addr = CheckRegion((DWORD)mbi.BaseAddress, mbi.RegionSize, exeStart, exeEnd);
+			if (Addr != 0xFFFFFFFF)
+			{
+				AddrFound = Addr;
+				log("[Virusek] Patch succeeded: absolute=%08X (region base=%08X RVA-like offset=%08X)\n",
+					(unsigned)((DWORD)mbi.BaseAddress + Addr),
+					(unsigned)(DWORD)mbi.BaseAddress,
+					(unsigned)Addr);
+				break;
+			}
+		}
+
+		if (mbi.RegionSize <= 0)
+			break;
+
+		ret = VirtualQuery((void*)(((DWORD)mbi.BaseAddress) + mbi.RegionSize), &mbi, sizeof(mbi));
+		if (ret == 0)
+			break;
+	}
+
+	log("[Virusek] VirtualQuery walk: regionsSeen=%u regionsMatchingExecutableGuard=%u\n",
+		(unsigned)regionsTotal, (unsigned)regionsExecutableGuard);
+
+	if (AddrFound != -1L)
+		logc(FOREGROUND_BROWN, "[Virusek] RESULT: SecuROM patch applied (FindWindow trigger). Offset in matched region=%08X\n", AddrFound);
+	else
+		log("[Virusek] RESULT: NO matching SecuROM fingerprint — no in-memory patch applied (game build may differ or FindWindow not used as expected).\n");
+	log("[Virusek] ===== RunVirusekMethod end =====\n");
 }
 
 HWND WINAPI FindWindowA_Hook(LPCSTR lpClassName, LPCSTR lpWindowName)
 {
 	MH_STATUS status = MH_DisableHook(&FindWindowA);
-	logc(FOREGROUND_BROWN, "FindWindowA_Hook: lpClassName: %s lpWindowName: %s %08X\n", lpClassName ? lpClassName : "NULL", lpWindowName ? lpWindowName : "NULL", status);
+	log("[Virusek] FindWindowA_Hook ENTER (Virusek trigger): class=\"%s\" name=\"%s\" MH_DisableHook=%d\n",
+		lpClassName ? lpClassName : "",
+		lpWindowName ? lpWindowName : "",
+		(int)status);
+	logc(FOREGROUND_BROWN, "FindWindowA_Hook: lpClassName: %s lpWindowName: %s status=%08X\n", lpClassName ? lpClassName : "NULL", lpWindowName ? lpWindowName : "NULL", status);
 
 	RunVirusekMethod();
+
+	log("[Virusek] FindWindowA_Hook: calling original FindWindowA (one-shot hook disabled)\n");
 	
 	// Skylanders specific testing!
 	/*
@@ -132,8 +173,14 @@ HWND WINAPI FindWindowA_Hook(LPCSTR lpClassName, LPCSTR lpWindowName)
 	ApplyPatches();
 	GetKey(true);
 	*/
-	RestrictProcessors(config.GetInt("CPUCount", -1));
-	return FindWindowA_Orig(lpClassName, lpWindowName);
+	{
+		int cpus = config.GetInt("CPUCount", -1);
+		log("[Virusek] RestrictProcessors(CPUCount=%d)\n", cpus);
+		RestrictProcessors(cpus);
+	}
+	HWND fwRet = FindWindowA_Orig(lpClassName, lpWindowName);
+	log("[Virusek] FindWindowA_Orig returned HWND=%p\n", (void*)fwRet);
+	return fwRet;
 }
 
 BOOL VirtualQuery_Hook_Logging = false;

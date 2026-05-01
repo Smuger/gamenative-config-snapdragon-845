@@ -46,6 +46,8 @@ Resolved next to the **main executable** (see `securomloader.cpp` / `GetMainExec
 
 ### NFS Underground 2
 
+- **Wine / Proton:** the game often calls **`GetVolumeInformationW`** / **`GetDriveTypeW`** / **`CreateFileW`** instead of the `*A` APIs. This loader hooks **both** ANSI and Unicode variants so volume label spoofing (`CDROMVolumeName`) and drive **`F:`** handling apply under Wine as well.
+
 - Installer / disc layouts live under **`../iso1/`** (disc 1) and **`../iso2/`** (disc 2, includes `speed2.exe`).
 - Template JSON in repo (same tree): **`../version.json`** — copy beside **`speed2.exe`** as **`version.json`** and tune `CDROMVolumeName` / mappings if your protection still checks drives.
 
