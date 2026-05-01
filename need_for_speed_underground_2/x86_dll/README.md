@@ -48,6 +48,7 @@ Resolved next to the **main executable** (see `securomloader.cpp` / `GetMainExec
 | `GeometryCheckOneToZero` | bool | CRC / geometry (`crcfixer.cpp`) |
 | `Override7C0` | string | Optional hex for `+7C0`-style checks |
 | `exeFile` | string | Optional; only `TestConfig()` in `config.cpp` reads it today |
+| `SafeDiscSupport` | bool | **SafeDisc:** emulate **secdrv** IOCTLs (`0xEF002407`, stub `0xCA002813`) and **`\\.\SecDrv` → NUL** (from [SafeDiscLoader2](https://github.com/nckstwrt/SafeDiscLoader2) `secdrv_ioctl` + `CheckForSecDrv` pattern). Does **not** include full `LoadLibraryA` temp-DLL patches — see `safedisc/README.md`. |
 
 **Alternate Virusek triggers:** `FindWindowA` often never runs on Wine. Use **`VirusekTriggerEnumWindows`** and/or **`VirusekTriggerFirstDriveTypeMatch`** (see table). Only **one** run occurs per process across **`FindWindowA`**, **`EnumWindows`**, **`GetDriveType*`**, and **`VirusekProbeAtDllLoad`** (`TryRunVirusekMethodOnce`). Disable **`VirusekProbeAtDllLoad`** when testing alternate triggers so the probe does not consume the single run.
 

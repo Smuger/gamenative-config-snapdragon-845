@@ -46,6 +46,30 @@ const char* CDROMDriveLetter = NULL;
 DWORD CDCheckStartAddr = 0;
 DWORD CDCheckEndAddr = 0;
 
+static HANDLE SafeDisc_OpenSecDrvA(LPCSTR lpFileName, CreateFileA_typedef pfn)
+{
+	if (!config.GetBool("SafeDiscSupport", false) || !lpFileName)
+		return INVALID_HANDLE_VALUE;
+	if (_stricmp(lpFileName, "\\\\.\\Secdrv") != 0 && _stricmp(lpFileName, "\\\\.\\Global\\SecDrv") != 0)
+		return INVALID_HANDLE_VALUE;
+	HANDLE h = pfn("NUL", GENERIC_READ, FILE_SHARE_READ, NULL, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
+	if (h != INVALID_HANDLE_VALUE)
+		log("SafeDisc: SecDrv -> NUL (A) handle=%p\n", (void*)h);
+	return h;
+}
+
+static HANDLE SafeDisc_OpenSecDrvW(LPCWSTR lpFileName, CreateFileW_typedef pfn)
+{
+	if (!config.GetBool("SafeDiscSupport", false) || !lpFileName)
+		return INVALID_HANDLE_VALUE;
+	if (_wcsicmp(lpFileName, L"\\\\.\\Secdrv") != 0 && _wcsicmp(lpFileName, L"\\\\.\\Global\\SecDrv") != 0)
+		return INVALID_HANDLE_VALUE;
+	HANDLE h = pfn(L"NUL", GENERIC_READ, FILE_SHARE_READ, NULL, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
+	if (h != INVALID_HANDLE_VALUE)
+		log("SafeDisc: SecDrv -> NUL (W) handle=%p\n", (void*)h);
+	return h;
+}
+
 HANDLE WINAPI OpenFileMappingW_Hook(DWORD dwDesiredAccess, BOOL bInheritHandle, LPCWSTR lpName)
 {
 	logc(FOREGROUND_YELLOW, "OpenFileMappingW Hook - lpName: %ls\n", lpName ? lpName : L"!NULL!");
@@ -225,6 +249,14 @@ HANDLE WINAPI CreateFileA_Hook(LPCSTR lpFileName, DWORD dwDesiredAccess, DWORD d
 		lpFileName = strFileName.c_str();
 	}
 
+	HANDLE secA = SafeDisc_OpenSecDrvA(lpFileName, CreateFileA_Orig);
+	if (secA != INVALID_HANDLE_VALUE)
+	{
+		if (logCreateFile && lpFileName && _stricmp(lpFileName, "CONOUT$") != 0)
+			log("CreateFileA_Hook Hook - lpFileName: %s ret: %08X (SafeDisc SecDrv)\n", lpFileName == NULL ? "!NULL!" : lpFileName, (unsigned)(uintptr_t)secA);
+		return secA;
+	}
+
 	if (CDROMDriveLetter)
 	{
 		NString drivePath = NString::Format("\\\\.\\%c:", toupper(CDROMDriveLetter[0]));
@@ -251,6 +283,15 @@ HANDLE WINAPI CreateFileA_Hook_KBase(LPCSTR lpFileName, DWORD dwDesiredAccess, D
 		strFileName = config.GetFileMapping(lpFileName);
 		lpFileName = strFileName.c_str();
 	}
+
+	HANDLE secAK = SafeDisc_OpenSecDrvA(lpFileName, CreateFileA_Orig_KBase);
+	if (secAK != INVALID_HANDLE_VALUE)
+	{
+		if (logCreateFile && lpFileName && _stricmp(lpFileName, "CONOUT$") != 0)
+			log("CreateFileA_Hook_KBase Hook - lpFileName: %s ret: %08X (SafeDisc SecDrv)\n", lpFileName == NULL ? "!NULL!" : lpFileName, (unsigned)(uintptr_t)secAK);
+		return secAK;
+	}
+
 	HANDLE ret = CreateFileA_Orig_KBase(lpFileName, dwDesiredAccess, dwShareMode, lpSecurityAttributes, dwCreationDisposition, dwFlagsAndAttributes, hTemplateFile);
 
 	if (logCreateFile && lpFileName && _stricmp(lpFileName, "CONOUT$") != 0)
@@ -270,6 +311,15 @@ HANDLE WINAPI CreateFileW_Hook(LPCWSTR lpFileName, DWORD dwDesiredAccess, DWORD 
 		tempPathHolder = mapped.c_str();
 		usePath = (LPCWSTR)tempPathHolder;
 	}
+
+	HANDLE secW = SafeDisc_OpenSecDrvW(usePath, CreateFileW_Orig);
+	if (secW != INVALID_HANDLE_VALUE)
+	{
+		if (logCreateFile && usePath && wcscmp(usePath, L"CONOUT$") != 0)
+			log("CreateFileW_Hook - lpFileName: %ls ret: %08X (SafeDisc SecDrv)\n", usePath, (unsigned)(uintptr_t)secW);
+		return secW;
+	}
+
 	if (CDROMDriveLetter && usePath)
 	{
 		wchar_t pattern[16];
@@ -297,6 +347,15 @@ HANDLE WINAPI CreateFileW_Hook_KBase(LPCWSTR lpFileName, DWORD dwDesiredAccess, 
 		tempPathHolder = mapped.c_str();
 		usePath = (LPCWSTR)tempPathHolder;
 	}
+
+	HANDLE secWK = SafeDisc_OpenSecDrvW(usePath, CreateFileW_Orig_KBase);
+	if (secWK != INVALID_HANDLE_VALUE)
+	{
+		if (logCreateFile && usePath && wcscmp(usePath, L"CONOUT$") != 0)
+			log("CreateFileW_Hook_KBase - lpFileName: %ls ret: %08X (SafeDisc SecDrv)\n", usePath, (unsigned)(uintptr_t)secWK);
+		return secWK;
+	}
+
 	if (CDROMDriveLetter && usePath)
 	{
 		wchar_t pattern[16];
@@ -595,6 +654,15 @@ void SecuROMLoader(HMODULE hModule)
 	log("Version.DLL Loaded!\n");
 	log("Loaded by .exe: %s\n", (LPCSTR)csExeFile);
 	log("CommandLine: %s\n", (LPCSTR)csCommandLine);
+
+	if (config.GetBool("SafeDiscSupport", false))
+	{
+		DWORD sdMaj = 0, sdSub = 0, sdRev = 0;
+		if (GetSafeDiscVersion(szExeFile, &sdMaj, &sdSub, &sdRev))
+			logc(FOREGROUND_BLUE, "SafeDiscSupport: exe version markers ~ %u.%02u.%02u\n", sdMaj, sdSub, sdRev);
+		else
+			log("SafeDiscSupport: no SafeDisc version string in main exe (IOCTL/SecDrv stubs still active).\n");
+	}
 
 	if (HasSafeSEH())
 	{

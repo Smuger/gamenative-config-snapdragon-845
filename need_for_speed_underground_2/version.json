@@ -1,9 +1,10 @@
 {
+	"SafeDiscSupport": true,
 	"exeFile": "speed2.exe",
 	"logging": true,
 	"logFile": "version.log.txt",
 	"logCreateFile": true,
-	"UseVirusekMethod": true,
+	"UseVirusekMethod": false,
 	"VirusekProbeAtDllLoad": false,
 	"VirusekTriggerTrace": false,
 	"VirusekDiskTrace": false,
