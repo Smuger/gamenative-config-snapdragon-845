@@ -14,6 +14,7 @@
     <ClCompile Include="version\dllmain.cpp" />
     <ClCompile Include="version\version.cpp" />
     <ClCompile Include="version\securomloader.cpp" />
+    <ClCompile Include="version\virusektriggertrace.cpp" />
     <ClCompile Include="version\deviceiocontrolhook.cpp" />
     <ClCompile Include="version\compatibility.cpp" />
     <ClCompile Include="shared\config.cpp" />
@@ -35,6 +36,7 @@
     <ClInclude Include="version\version.h" />
     <ClInclude Include="version\deviceiocontrolhook.h" />
     <ClInclude Include="version\compatibility.h" />
+    <ClInclude Include="version\virusektriggertrace.h" />
     <ClInclude Include="shared\config.h" />
     <ClInclude Include="shared\utils.h" />
     <ClInclude Include="shared\crcfixer.h" />

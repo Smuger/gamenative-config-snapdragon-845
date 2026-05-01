@@ -37,6 +37,7 @@ Resolved next to the **main executable** (see `securomloader.cpp` / `GetMainExec
 | `logCreateFile` | bool | Verbose `CreateFile` / attribute logging (default **true** if omitted) |
 | `UseVirusekMethod` | bool | Hook `FindWindowA` + SecuROM scan (`virusekmethod.cpp`) |
 | `VirusekProbeAtDllLoad` | bool | If **true**, runs `RunVirusekMethod()` once right after hooks enable (diagnostic; usually **no** fingerprint match until after unpack) |
+| `VirusekTriggerTrace` | bool | If **true**, logs **`[VirusekTriggerTrace]`** lines for a fixed set of **user32** / **shell32** APIs (FindWindowW, FindWindowExA/W, EnumWindows, MessageBox*, ShowWindow, …) so you can pick an alternative trigger to `FindWindowA`. Not exhaustive; **ShowWindow** can be noisy. |
 | `CDROMDriveLetter` | string | Spoofed disc letter (e.g. `F`) |
 | `CDROMVolumeName` | string | Volume label for that letter |
 | `fileMappings` | array of `{ "source", "target" }` | Path rewrites |

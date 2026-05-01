@@ -11,6 +11,7 @@
 #include "deviceiocontrolhook.h"
 #include "compatibility.h"
 #include "../virusek/virusekmethod.h"
+#include "virusektriggertrace.h"
 #include <vector>
 
 NtDeviceIoControlFile_typedef NtDeviceIoControlFile_Orig;
@@ -752,7 +753,9 @@ void SecuROMLoader(HMODULE hModule)
 		log("Unable to hook LoadLibraryA\n");
 		return;
 	}
-	
+
+	InstallVirusekTriggerTraceHooks(config);
+
 	// If using the virusek method, then no need to hook these and try and bypass the cd checks
 	if (!config.GetBool("UseVirusekMethod"))
 	{

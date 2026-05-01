@@ -5,10 +5,14 @@
 	"logCreateFile": true,
 	"UseVirusekMethod": true,
 	"VirusekProbeAtDllLoad": false,
+	"VirusekTriggerTrace": false,
 	"CDROMDriveLetter": "F",
 	"CDROMVolumeName": "DISK2",
 	"CPUCount": 1,
 	"fileMappings": [
-		{"source": "F:\\*", "target": ".\\*"}
+		{
+			"source": "F:\\*",
+			"target": ".\\*"
+		}
 	]
 }
