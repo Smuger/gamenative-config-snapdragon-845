@@ -5,6 +5,9 @@
 #define _CRT_SECURE_NO_WARNINGS
 #include <windows.h>
 #include "../shared/utils.h"
+#include "../shared/config.h"
+
+extern Config config;
 
 enum SafeDiscCommand {
 	GetDebugRegisterInfo = 0x3c,
@@ -16,6 +19,21 @@ enum SafeDiscCommand {
 	Command42h = 0x42,
 	Command43h = 0x43
 };
+
+static const char* SecDrvCmdName(unsigned cmd)
+{
+	switch (cmd) {
+	case GetDebugRegisterInfo: return "GetDebugRegisterInfo";
+	case GetIdtInfo: return "GetIdtInfo";
+	case SetupVerification: return "SetupVerification";
+	case Command3Fh: return "Command3Fh";
+	case Command40h: return "Command40h";
+	case Command41h: return "Command41h";
+	case Command42h: return "Command42h";
+	case Command43h: return "Command43h";
+	default: return "unknown";
+	}
+}
 
 typedef struct MainIoctlInBuffer {
 	DWORD VersionMajor;
@@ -79,6 +97,14 @@ BOOL SafeDisc_ProcessMainIoctl(LPVOID lpInBuffer, DWORD nInBufferSize, LPVOID lp
 		s_hasLoggedVersion = true;
 	}
 
+	if (config.GetBool("SafeDiscSupport", false) && config.GetBool("SafeDiscTrace", true))
+		log("[SafeDisc] secdrv ioctl cmd=%02X (%s) game_ver=%u.%u.%u extra[0]=%08X outSz=%u\n",
+			(unsigned)inBuffer->Command,
+			SecDrvCmdName((unsigned)inBuffer->Command),
+			(unsigned)inBuffer->VersionMajor, (unsigned)inBuffer->VersionMinor, (unsigned)inBuffer->VersionPatch,
+			inBuffer->ExtraData[0],
+			(unsigned)nOutBufferSize);
+
 	outBuffer->VersionMajor = 4;
 	outBuffer->VersionMinor = 3;
 	outBuffer->VersionPatch = 86;
@@ -119,6 +145,8 @@ BOOL SafeDisc_ProcessMainIoctl(LPVOID lpInBuffer, DWORD nInBufferSize, LPVOID lp
 		outBuffer->ExtraDataSize = 4;
 		break;
 	case Command42h:
+		if (config.GetBool("SafeDiscSupport", false) && config.GetBool("SafeDiscTrace", true))
+			log("[SafeDisc] secdrv Command42h -> FALSE (not implemented)\n");
 		return FALSE;
 	case Command43h:
 		if (inBuffer->ExtraData[0] != 0x98A64100 || inBuffer->ExtraData[1] > 7 || inBuffer->ExtraData[1] == 4)
@@ -128,6 +156,8 @@ BOOL SafeDisc_ProcessMainIoctl(LPVOID lpInBuffer, DWORD nInBufferSize, LPVOID lp
 		break;
 	default:
 		logc(FOREGROUND_RED, "unhandled ioctl command: %X\n", static_cast<DWORD>(inBuffer->Command));
+		if (config.GetBool("SafeDiscSupport", false) && config.GetBool("SafeDiscTrace", true))
+			log("[SafeDisc] secdrv unhandled cmd %02X -> emulation FAILED\n", (unsigned)inBuffer->Command);
 		return FALSE;
 	}
 

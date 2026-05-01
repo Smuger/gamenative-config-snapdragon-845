@@ -2,9 +2,16 @@
 #define _CRT_SECURE_NO_WARNINGS
 #include <Windows.h>
 #include "../shared/utils.h"
+#include "../shared/config.h"
 
 extern HINSTANCE hInstanceAuthServ;
 extern HINSTANCE hInstanceSecServ;
+extern Config config;
+
+static bool SafeDiscDecryptTrace()
+{
+	return config.GetBool("SafeDiscSupport", false) && config.GetBool("SafeDiscTrace", true);
+}
 
 DWORD DecryptA5Block(DWORD A5Block_41C3D0, DWORD Block41A31C, DWORD Offset_4198F8, DWORD BaseAddr)
 {
@@ -45,6 +52,9 @@ DWORD DecryptA5Block(DWORD A5Block_41C3D0, DWORD Block41A31C, DWORD Offset_4198F
 
 BYTE* Decrypt24Function() // bOOls eYe code
 {
+	if (SafeDiscDecryptTrace())
+		log("[SafeDisc] decrypt: Decrypt24Function enter AuthServ=%p SecServ=%p\n",
+			(void*)hInstanceAuthServ, (void*)hInstanceSecServ);
 	BYTE* MentalMemory = new BYTE[0x10000];
 	DWORD AuthServTxtAddr = ((DWORD)hInstanceAuthServ) + GetSectionByName(((DWORD)hInstanceAuthServ), ".txt")->VirtualAddress; // 971000
 
@@ -304,6 +314,9 @@ BYTE* Decrypt24Function() // bOOls eYe code
 
 BYTE* Decrypt25Function() // bOOls eYe code
 {
+	if (SafeDiscDecryptTrace())
+		log("[SafeDisc] decrypt: Decrypt25Function enter AuthServ=%p SecServ=%p\n",
+			(void*)hInstanceAuthServ, (void*)hInstanceSecServ);
 	BYTE* MentalMemory = new BYTE[0x10000];
 	DWORD AuthServTxtAddr = ((DWORD)hInstanceAuthServ) + GetSectionByName(((DWORD)hInstanceAuthServ), ".txt")->VirtualAddress; // 971000
 
@@ -649,6 +662,9 @@ DWORD DecryptA5BlockFor23(DWORD A5Block_41C3D0, DWORD Block41A31C, DWORD Offset_
 
 BYTE* Decrypt23Function() // bOOls eYe code
 {
+	if (SafeDiscDecryptTrace())
+		log("[SafeDisc] decrypt: Decrypt23Function enter AuthServ=%p SecServ=%p\n",
+			(void*)hInstanceAuthServ, (void*)hInstanceSecServ);
 	BYTE* MentalMemory = new BYTE[0x10000];
 
 	//GetKey(true);
@@ -791,9 +807,9 @@ BYTE* Decrypt23Function() // bOOls eYe code
 	
 	// 0x13 = 19
 	//           1  2  3  4  5  6  7  8  9  10 11 12 13 14 15 16
-	// 0040F453  60 68 F0 4F 06 00 6A 02 E8 1D 03 00 00 83 C4 08  `hO..j.Ë.....ƒ.
+	// 0040F453  60 68 F0 4F 06 00 6A 02 E8 1D 03 00 00 83 C4 08  `hùO..j.ù.....ù.
 	//           17 18 19
-	// 0040F463  61 EB 3A 68 00 50 03 00 E8 96 9C FF FF 83 C4 04  aÎ:h.P..Ë..ˇˇ.ƒ.
+	// 0040F463  61 EB 3A 68 00 50 03 00 E8 96 9C FF FF 83 C4 04  aù:h.P..ù..ùù.ù.
 	// 00409D4A | C705 55F44000 F04F0600 | mov dword ptr ds : [40F455] , 64FF0 |
 
 	DWORD dst = ((DWORD)hInstanceSecServ) + 0x2BE86;
@@ -865,6 +881,9 @@ void DecryptTEAKey(BYTE* Block4105C0, BYTE* Block4105E0)
 
 void Decrypt21Function() // bOOls eYe code
 {
+	if (SafeDiscDecryptTrace())
+		log("[SafeDisc] decrypt: Decrypt21Function enter AuthServ=%p SecServ=%p\n",
+			(void*)hInstanceAuthServ, (void*)hInstanceSecServ);
 	BYTE Block40F42C[0x27] = { 0xFF, 0x35, 0xF8, 0x44, 0x03, 0x00, 0x68, 0x00, 0x10, 0x00, 0x00, 0x68, 0x68, 0xF7, 0x02, 0x00, 
 							   0xE8, 0x00, 0x00, 0x00, 0x00, 0x83, 0xC4, 0x0C, 0x68, 0x20, 0x45, 0x03, 0x00, 0xE8, 0x60, 0x90,
 							   0xFF, 0xFF, 0x83, 0xC4, 0x04, 0xC3, 0x90 };
@@ -928,6 +947,9 @@ void Decrypt21Function() // bOOls eYe code
 
 void Decrypt20Function() // bOOls eYe code
 {
+	if (SafeDiscDecryptTrace())
+		log("[SafeDisc] decrypt: Decrypt20Function enter AuthServ=%p SecServ=%p\n",
+			(void*)hInstanceAuthServ, (void*)hInstanceSecServ);
 	BYTE Block40F410[0xF] = { 0x68, 0x00, 0x00, 0x00, 0x00, 0xE8, 0x29, 0x95, 0xFF, 0xFF, 0x83, 0xC4, 0x04, 0xC3, 0x90 };
 
 	DWORD eax = ((DWORD)hInstanceAuthServ) + 0x2D680;

@@ -66,6 +66,12 @@ bool logSCSIPassThrough = false;
 Config config;
 HMODULE hOurModule;
 
+/** Milestone logs for SafeDisc hook decisions; disable with "SafeDiscTrace": false in version.json */
+static bool SafeDiscTraceEnabled()
+{
+	return config.GetBool("SafeDiscSupport", false) && config.GetBool("SafeDiscTrace", true);
+}
+
 typedef NTSTATUS(WINAPI* NtDeviceIoControlFile_typedef)(HANDLE FileHandle, HANDLE Event, PIO_APC_ROUTINE ApcRoutine, PVOID ApcContext, PIO_STATUS_BLOCK IoStatusBlock, ULONG IoControlCode, PVOID InputBuffer, ULONG InputBufferLength, PVOID OutputBuffer, ULONG OutputBufferLength);
 NtDeviceIoControlFile_typedef NtDeviceIoControlFile_Orig;
 static unsigned int ioctlCodeMain = 0xef002407;
@@ -181,18 +187,23 @@ NTSTATUS NTAPI NtDeviceIoControlFile_Hook(HANDLE FileHandle, HANDLE Event, PIO_A
 	// all IOCTLs will pass through this function, but it's probably fine since secdrv uses unique control codes
 	if (IoControlCode == ioctlCodeMain) {
 		//log("Override IoStatusBlock->Status Handle: %d Status: %d\n", (DWORD)FileHandle, IoStatusBlock->Status);
-		if (SafeDisc_ProcessMainIoctl(InputBuffer, InputBufferLength, OutputBuffer, OutputBufferLength))
+		BOOL sdOk = SafeDisc_ProcessMainIoctl(InputBuffer, InputBufferLength, OutputBuffer, OutputBufferLength);
+		if (sdOk)
 		{
 			IoStatusBlock->Information = OutputBufferLength;
 			IoStatusBlock->Status = STATUS_SUCCESS;
 		}
 		else
 			IoStatusBlock->Status = STATUS_UNSUCCESSFUL;
+		if (SafeDiscTraceEnabled())
+			log("[SafeDisc] secdrv main IOCTL (ef002407) emulated ok=%d -> status=%08X\n", sdOk, (unsigned)IoStatusBlock->Status);
 	}
 	else if (IoControlCode == 0xCA002813)
 	{
 	//	logc(FOREGROUND_RED, "IOCTL 0xCA002813 unhandled (please report!)");
 		IoStatusBlock->Status = STATUS_UNSUCCESSFUL;
+		if (SafeDiscTraceEnabled())
+			log("[SafeDisc] IOCTL 0xCA002813 (alt secdrv?) -> STATUS_UNSUCCESSFUL\n");
 	}
 	else if (logSCSIPassThrough && (IoControlCode == IOCTL_SCSI_PASS_THROUGH_DIRECT || IoControlCode == IOCTL_SCSI_PASS_THROUGH))
 	{
@@ -286,6 +297,8 @@ int InjectSelf(DWORD pid)
 	CloseHandle(hProcess);
 
 	log("Injecting into pid %d\n", pid);
+	if (SafeDiscTraceEnabled())
+		log("[SafeDisc] InjectSelf finished remote LoadLibrary for \"%s\" -> pid %u\n", szPath, pid);
 
 	return 0;
 }
@@ -302,6 +315,8 @@ HANDLE CheckForSecDrvW(LPCWSTR lpFileName, CreateFileW_typedef CreateFileOrig)
 			ret = CreateFileOrig(L"NUL", GENERIC_READ, FILE_SHARE_READ, NULL, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
 			if (ret == INVALID_HANDLE_VALUE)
 				log("unable to obtain a dummy handle for secdrv (W)");
+			else if (SafeDiscTraceEnabled())
+				log("[SafeDisc] CreateFileW: secdrv device -> NUL handle=%p\n", (void*)ret);
 		}
 	}
 
@@ -320,6 +335,8 @@ HANDLE CheckForSecDrv(LPCSTR lpFileName, CreateFileA_typedef CreateFileOrig)
 			ret = CreateFileOrig("NUL", GENERIC_READ, FILE_SHARE_READ, NULL, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
 			if (ret == INVALID_HANDLE_VALUE)
 				log("unable to obtain a dummy handle for secdrv");
+			else if (SafeDiscTraceEnabled())
+				log("[SafeDisc] CreateFileA: secdrv device -> NUL handle=%p\n", (void*)ret);
 			/*else
 				log("CreateFileA_Hook - returning NUL for %s Handle: %d\n", lpFileName, (DWORD)dummyHandle);*/
 		}
@@ -366,9 +383,12 @@ static bool SafeDisc_IsSdLocaleDllPathW(LPCWSTR path)
 HANDLE WINAPI CreateFileA_Hook(LPCSTR lpFileName, DWORD dwDesiredAccess, DWORD dwShareMode, LPSECURITY_ATTRIBUTES lpSecurityAttributes, DWORD dwCreationDisposition, DWORD dwFlagsAndAttributes, HANDLE hTemplateFile)
 {
 	std::string strFileName;
+	const char* pathBeforeMap = lpFileName;
 	if (lpFileName)
 	{
 		strFileName = config.GetFileMapping(lpFileName);
+		if (SafeDiscTraceEnabled() && strcmp(pathBeforeMap, strFileName.c_str()) != 0)
+			log("[SafeDisc] fileMappings: CreateFileA \"%s\" -> \"%s\"\n", pathBeforeMap, strFileName.c_str());
 		lpFileName = strFileName.c_str();
 	}
 
@@ -395,6 +415,8 @@ HANDLE WINAPI CreateFileA_Hook(LPCSTR lpFileName, DWORD dwDesiredAccess, DWORD d
 			if (drivePath == lpFileName)
 			{
 				logc(FOREGROUND_LIME, "Redirecting CreateFileA of CDROM drive %s to NUL device\n", (LPCSTR)drivePath);
+				if (SafeDiscTraceEnabled())
+					log("[SafeDisc] disc: CreateFileA \\\\.\\%c: -> NUL (virtual CD path)\n", (char)toupper((unsigned char)CDROMDriveLetter[0]));
 				lpFileName = "NUL";
 			}
 		}
@@ -410,9 +432,12 @@ HANDLE WINAPI CreateFileA_Hook(LPCSTR lpFileName, DWORD dwDesiredAccess, DWORD d
 HANDLE WINAPI CreateFileA_Hook_KBase(LPCSTR lpFileName, DWORD dwDesiredAccess, DWORD dwShareMode, LPSECURITY_ATTRIBUTES lpSecurityAttributes, DWORD dwCreationDisposition, DWORD dwFlagsAndAttributes, HANDLE hTemplateFile)
 {
 	std::string strFileName;
+	const char* pathBeforeMap = lpFileName;
 	if (lpFileName)
 	{
 		strFileName = config.GetFileMapping(lpFileName);
+		if (SafeDiscTraceEnabled() && strcmp(pathBeforeMap, strFileName.c_str()) != 0)
+			log("[SafeDisc] fileMappings: CreateFileA_KBase \"%s\" -> \"%s\"\n", pathBeforeMap, strFileName.c_str());
 		lpFileName = strFileName.c_str();
 	}
 
@@ -443,12 +468,15 @@ HANDLE WINAPI CreateFileW_Hook(LPCWSTR lpFileName, DWORD dwDesiredAccess, DWORD 
 {
 	NString tempPathHolder;
 	LPCWSTR usePath = lpFileName;
+	LPCWSTR origW = lpFileName;
 	if (lpFileName)
 	{
 		NString wideStr(lpFileName);
 		std::string mapped = config.GetFileMapping(wideStr);
 		tempPathHolder = mapped.c_str();
 		usePath = (LPCWSTR)tempPathHolder;
+		if (SafeDiscTraceEnabled() && origW && wcscmp(origW, usePath) != 0)
+			log("[SafeDisc] fileMappings: CreateFileW \"%ls\" -> \"%ls\"\n", origW, usePath);
 	}
 
 	if (config.GetBool("SafeDiscSupport", false) && config.GetBool("SafeDiscSpoofSdLocaleProbe", true)
@@ -480,6 +508,8 @@ HANDLE WINAPI CreateFileW_Hook(LPCWSTR lpFileName, DWORD dwDesiredAccess, DWORD 
 		if (_wcsicmp(usePath, pattern) == 0)
 		{
 			logc(FOREGROUND_LIME, "Redirecting CreateFileW (kernel32) of CDROM drive %ls to NUL\n", pattern);
+			if (SafeDiscTraceEnabled())
+				log("[SafeDisc] disc: CreateFileW \\\\.\\%c: -> NUL\n", (char)towupper((unsigned char)CDROMDriveLetter[0]));
 			usePath = L"NUL";
 		}
 	}
@@ -493,12 +523,15 @@ HANDLE WINAPI CreateFileW_Hook_KBase(LPCWSTR lpFileName, DWORD dwDesiredAccess, 
 {
 	NString tempPathHolder;
 	LPCWSTR usePath = lpFileName;
+	LPCWSTR origWK = lpFileName;
 	if (lpFileName)
 	{
 		NString wideStr(lpFileName);
 		std::string mapped = config.GetFileMapping(wideStr);
 		tempPathHolder = mapped.c_str();
 		usePath = (LPCWSTR)tempPathHolder;
+		if (SafeDiscTraceEnabled() && origWK && wcscmp(origWK, usePath) != 0)
+			log("[SafeDisc] fileMappings: CreateFileW_KBase \"%ls\" -> \"%ls\"\n", origWK, usePath);
 	}
 
 	if (config.GetBool("SafeDiscSupport", false) && config.GetBool("SafeDiscSpoofSdLocaleProbe", true)
@@ -530,6 +563,8 @@ HANDLE WINAPI CreateFileW_Hook_KBase(LPCWSTR lpFileName, DWORD dwDesiredAccess, 
 		if (_wcsicmp(usePath, pattern) == 0)
 		{
 			logc(FOREGROUND_LIME, "Redirecting CreateFileW (kernelbase) of CDROM drive %ls to NUL\n", pattern);
+			if (SafeDiscTraceEnabled())
+				log("[SafeDisc] disc: CreateFileW_KBase \\\\.\\%c: -> NUL\n", (char)towupper((unsigned char)CDROMDriveLetter[0]));
 			usePath = L"NUL";
 		}
 	}
@@ -553,6 +588,9 @@ BOOL WINAPI CreateProcessA_Hook(LPCSTR lpApplicationName, LPSTR lpCommandLine, L
 	// log("Hooking and calling Process at CreateProcessA_Hook\n");
 
 	InjectSelf(lpProcessInformation->dwProcessId);
+	if (SafeDiscTraceEnabled())
+		log("[SafeDisc] CreateProcessA: created child pid=%u (suspended=%d) for inject\n",
+			lpProcessInformation->dwProcessId, (int)isCreateSuspended);
 
 	if (!isCreateSuspended)
 		ResumeThread(lpProcessInformation->hThread);
@@ -573,6 +611,9 @@ BOOL WINAPI CreateProcessW_Hook(LPCWSTR lpApplicationName, LPWSTR lpCommandLine,
 		return FALSE;
 
 	InjectSelf(lpProcessInformation->dwProcessId);
+	if (SafeDiscTraceEnabled())
+		log("[SafeDisc] CreateProcessW: created child pid=%u (suspended=%d) for inject\n",
+			lpProcessInformation->dwProcessId, (int)isCreateSuspended);
 
 	if (!isCreateSuspended)
 		ResumeThread(lpProcessInformation->hThread);
@@ -598,6 +639,8 @@ BOOL WINAPI FreeLibrary_Hook(HINSTANCE hModule)
 {
 	if (hInstanceAuthServ == hModule)
 	{
+		if (SafeDiscTraceEnabled())
+			log("[SafeDisc] FreeLibrary AuthServ hModule=%p state_before=%d\n", (void*)hModule, (int)LoadedAuthServ);
 		if (SafeDiscVersion == 2 && SafeDiscSubVersion == 60 && SafeDiscRevision == 52)
 		{
 			logc(FOREGROUND_RED, "HACK FreeLibrary_Hook: Denying unloading AuthServ.dll\n");
@@ -609,9 +652,13 @@ BOOL WINAPI FreeLibrary_Hook(HINSTANCE hModule)
 			logc(FOREGROUND_RED, "FreeLibrary_Hook: Unloading AuthServ.dll\n");
 			LoadedAuthServ = AuthServState_Unloaded;
 		}
+		if (SafeDiscTraceEnabled())
+			log("[SafeDisc] FreeLibrary AuthServ -> LoadedAuthServ=%d\n", (int)LoadedAuthServ);
 	}
 	if (hInstanceSecServ == hModule)
 	{
+		if (SafeDiscTraceEnabled())
+			log("[SafeDisc] FreeLibrary SecServ hModule=%p (matches df394b instance)\n", (void*)hModule);
 		logc(FOREGROUND_RED, "FreeLibrary_Hook: Unloading SecServ.dll (~df394b.tmp)\n");
 	}
 	return FreeLibrary_Orig(hModule);
@@ -636,6 +683,10 @@ void __declspec(naked) WINAPI HookCDCheck()
 		pushad
 	}
 	log("HookCDCheck Called! %08X\n", (DWORD)HookCDCheck);
+	if (SafeDiscTraceEnabled())
+		log("[SafeDisc] HookCDCheck memcpy FirstCopy=%08X len=%d xor ThirdKey[0..3]=%02X%02X%02X%02X\n",
+			FirstCopy, amountToCopy,
+			ThirdKey[0], ThirdKey[1], ThirdKey[2], ThirdKey[3]);
 	memcpy((void*)FirstCopy, ThirdKey, amountToCopy);
 	__asm
 	{
@@ -653,11 +704,15 @@ void WINAPI Grabber()
 		call [savedFuncCall];
 	}
 
+	if (SafeDiscTraceEnabled())
+		log("[SafeDisc] Grabber StealCRCTablePtr=%08X savedFuncCall=%08X\n", StealCRCTablePtr, savedFuncCall);
 	logc(FOREGROUND_GREEN, "Grabber: StealCRCTablePtr = %08X\n", StealCRCTablePtr);
 }
 
 void WINAPI CallDecrypt(DWORD tableNo)
 {
+	if (SafeDiscTraceEnabled() && DecryptFunc)
+		log("[SafeDisc] CallDecrypt tableNo=%u DecryptFunc=%08X\n", (unsigned)tableNo, DecryptFunc);
 	__asm
 	{
 		push [tableNo];
@@ -782,6 +837,8 @@ HMODULE WINAPI LoadLibraryA_Hook(LPCSTR lpLibFileName)
 
 		DWORD StartAddr = (DWORD)ret;
 		DWORD EndAddr = StartAddr + pinh->OptionalHeader.SizeOfImage;
+		if (SafeDiscTraceEnabled())
+			log("[SafeDisc] SecServ map ~df394b base=%08X..%08X size=%08X\n", StartAddr, EndAddr, pinh->OptionalHeader.SizeOfImage);
 
 		DWORD TablesInitAddr = FindHexString(StartAddr, EndAddr, "6A068BC8E8????????EB0233C0A3????????C3");
 		log("TablesInitAddr = %08X\n", TablesInitAddr);
@@ -822,7 +879,11 @@ HMODULE WINAPI LoadLibraryA_Hook(LPCSTR lpLibFileName)
 					UnProtect_memcpy((void*)HookDecodeTableAddr, (void*)&RelativeGrabberCall, 4);
 				}
 			}
+			else if (SafeDiscTraceEnabled())
+				log("[SafeDisc] SecServ: HookDecodeTable pattern miss (Grabber/DecryptFunc hook skipped)\n");
 		}
+		else if (SafeDiscTraceEnabled())
+			log("[SafeDisc] SecServ: TablesInitAddr miss (TableClass chain unreliable)\n");
 		
 		//GetKey();
 	}
@@ -836,6 +897,10 @@ HMODULE WINAPI LoadLibraryA_Hook(LPCSTR lpLibFileName)
 
 		DWORD StartAddr = (DWORD)ret;
 		DWORD EndAddr = StartAddr + pinh->OptionalHeader.SizeOfImage;
+		if (SafeDiscTraceEnabled())
+			log("[SafeDisc] AuthServ load path=\"%s\" base=%08X..%08X state=%d SecServ=%p cd2_rva=%08X data_rva=%08X\n",
+				lpLibFileName ? lpLibFileName : "", StartAddr, EndAddr, (int)LoadedAuthServ, (void*)hInstanceSecServ,
+				s_CdCheck2CallAddrRva, s_CdCheck2DataCheckAddrRva);
 		
 		if (LoadedAuthServ == AuthServState_Unloaded)	// It it has been unloaded then we are being used to just do additional CD Checks (so don't need to redo everything else)
 		{
@@ -888,7 +953,13 @@ HMODULE WINAPI LoadLibraryA_Hook(LPCSTR lpLibFileName)
 						//GetKey(true);
 					}
 				}
+				else if (SafeDiscTraceEnabled())
+					log("[SafeDisc] CdCheck2 reload: hInstanceSecServ NULL; SecServ data-check patch skipped\n");
+				if (SafeDiscTraceEnabled() && CdCheck2CallAddr != (DWORD)-1)
+					log("[SafeDisc] CdCheck2 reload done cdcheck_site=%08X SecServ_used=%d\n", CdCheck2CallAddr, hInstanceSecServ != NULL);
 			}
+			else if (SafeDiscTraceEnabled())
+				logc(FOREGROUND_RED, "[SafeDisc] CdCheck2 reload FAILED: CdCheck2CallAddr not found and no cached RVA\n");
 		}
 		else
 		if (LoadedAuthServ == AuthServState_NotYetLoaded)
@@ -991,6 +1062,10 @@ HMODULE WINAPI LoadLibraryA_Hook(LPCSTR lpLibFileName)
 					amountToCopy = 1014;
 				}
 				logc(FOREGROUND_GREEN, "FirstCopy = %08X SecondCopy = %08X ThirdCopy = %08X\n", FirstCopy, SecondCopy, ThirdCopy);
+				if (SafeDiscTraceEnabled())
+					log("[SafeDisc] AuthServ init: keys path=%s HookDecodeTableAddr=%08X amountToCopy=%d\n",
+						HookDecodeTableAddr != -1L ? "Grabber+CallDecrypt" : "TablePtr-only",
+						HookDecodeTableAddr, amountToCopy);
 
 				if (FirstCopy == 0 || SecondCopy == 0 || ThirdCopy == 0)
 				{
@@ -1017,6 +1092,8 @@ HMODULE WINAPI LoadLibraryA_Hook(LPCSTR lpLibFileName)
 				if (CdCheckCallAddr != -1L)
 				{
 					logc(FOREGROUND_GREEN, "CdCheckCallAddr_v1: %08X\n", CdCheckCallAddr);
+					if (SafeDiscTraceEnabled())
+						log("[SafeDisc] Primary CD-check hook: v1 EB0E... @ %08X -> HookCDCheck\n", CdCheckCallAddr);
 #ifndef USE_SDLOADER	
 					//UnProtect_memcpy((BYTE*)(CdCheckCallAddr + 2), PatchCDPtr, 9);
 					DWORD RelativeCDCheckHook = ((DWORD)&HookCDCheck) - CdCheckCallAddr - (5 + 2);
@@ -1029,6 +1106,8 @@ HMODULE WINAPI LoadLibraryA_Hook(LPCSTR lpLibFileName)
 				{
 					CdCheckCallAddr = FindHexString(StartAddr, EndAddr, "EB108B15????????8B4204FFD08B4DF88901", "CdCheckCallAddr_v2");
 					logc(FOREGROUND_GREEN, "CdCheckCallAddr_v2: %08X\n", CdCheckCallAddr);
+					if (SafeDiscTraceEnabled() && CdCheckCallAddr != -1L)
+						log("[SafeDisc] Primary CD-check hook: v2 EB10... @ %08X -> HookCDCheck\n", CdCheckCallAddr);
 				
 					// We hook for CdCheckCallAddr_v2 but we could just write the Third key (Call of Duty World at War is an example)
 					// memcpy((void*)FirstCopy, ThirdKey, amountToCopy);
@@ -1095,6 +1174,8 @@ DWORD WINAPI GetLogicalDrives_Hook()
 		{
 			ret |= 1 << (driveLetter - 'A');
 			logc(FOREGROUND_GREEN, "GetLogicalDrives_Hook: Adding %c as a valid drive\n", driveLetter);
+			if (SafeDiscTraceEnabled())
+				log("[SafeDisc] disc: GetLogicalDrives OR bit for drive %c: (CDROM letter from config)\n", driveLetter);
 		}
 	}
 	return ret;
@@ -1106,6 +1187,8 @@ UINT WINAPI GetDriveTypeA_Hook(LPCSTR lpRootPathName)
 	if (CDROMDriveLetter && lpRootPathName && toupper(lpRootPathName[0]) == toupper(CDROMDriveLetter[0]))
 	{
 		logc(FOREGROUND_GREEN, "GetDriveTypeA_Hook = %s IS A CDROM!\n", lpRootPathName ? lpRootPathName : "NULL");
+		if (SafeDiscTraceEnabled())
+			log("[SafeDisc] disc: GetDriveTypeA %s -> DRIVE_CDROM (spoof)\n", lpRootPathName);
 		return DRIVE_CDROM;
 	}
 	log("GetDriveTypeA_Hook = %s\n", lpRootPathName ? lpRootPathName : "NULL");
@@ -1129,6 +1212,8 @@ BOOL WINAPI GetVolumeInformationA_Hook(LPCSTR lpRootPathName, LPSTR lpVolumeName
 			logc(FOREGROUND_BLUE, "GetVolumeInformationA_Hook: Replacing FileSystemName with: %s\n", lpFileSystemNameBuffer);
 		}
 		ret = TRUE;
+		if (SafeDiscTraceEnabled())
+			log("[SafeDisc] disc: GetVolumeInformationA %s -> label \"%s\" fs CDFS (spoof)\n", lpRootPathName, CDROMVolumeName);
 	}
 	return ret;
 }
@@ -1140,6 +1225,8 @@ HANDLE WINAPI FindFirstFileA_Hook(LPCSTR lpFileName, LPWIN32_FIND_DATAA lpFindFi
 	{
 		strFileName = config.GetFileMapping(lpFileName);
 		logc(FOREGROUND_BLUE, "FindFirstFileA_Hook: Mapping %s to %s\n", lpFileName, strFileName.c_str());
+		if (SafeDiscTraceEnabled() && strcmp(lpFileName, strFileName.c_str()) != 0)
+			log("[SafeDisc] fileMappings: FindFirstFileA \"%s\" -> \"%s\"\n", lpFileName, strFileName.c_str());
 		lpFileName = strFileName.c_str();
 	}
 	return FindFirstFileA_Orig(lpFileName, lpFindFileData);
@@ -1491,6 +1578,14 @@ void SecuROMLoader(HMODULE hModule)
 	}
 	
 	log("Hooks Complete!\n");
+	if (SafeDiscTraceEnabled())
+	{
+		char exePath[MAX_PATH];
+		exePath[0] = '\0';
+		GetModuleFileNameA(NULL, exePath, MAX_PATH);
+		log("[SafeDisc] Trace: pid=%u exe=\"%s\" (set SafeDiscTrace false in version.json to silence)\n",
+			GetCurrentProcessId(), exePath);
+	}
 
 	if (config.GetBool("VirusekProbeAtDllLoad", false))
 	{
