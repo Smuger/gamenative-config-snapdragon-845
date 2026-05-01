@@ -13,6 +13,7 @@
 #include "../shared/config.h"
 #include <ntddscsi.h>
 #include <map>
+#include <string>
 
 // http://redump.org/discs/quicksearch/SafeDisc/protection/only
 // 
@@ -327,114 +328,6 @@ HANDLE CheckForSecDrv(LPCSTR lpFileName, CreateFileA_typedef CreateFileOrig)
 	return ret;
 }
 
-static const char* LastPathComponentEarly(LPCSTR path)
-{
-	const char* b = strrchr(path, '\\');
-	const char* f = strrchr(path, '/');
-	if (b && (!f || b > f))
-		return b + 1;
-	if (f)
-		return f + 1;
-	return path;
-}
-
-static bool SafeDisc_IsLocaleDllBaseNameEarly(const char* base)
-{
-	if (!base)
-		return false;
-	size_t n = strlen(base);
-	if (n < 10 || n > 16)
-		return false;
-	if (_strnicmp(base, "SD", 2) != 0)
-		return false;
-	if (_stricmp(base + n - 4, ".dll") != 0)
-		return false;
-	return true;
-}
-
-/** SafeDisc probes locale DLLs (e.g. SD0409.dll) by bare name; retail layout is usually disc root—redirect CreateFile to exe dir (optional) then CDROMDriveLetter root from version.json. */
-static HANDLE CreateFileViaAlternateLocalePathsA(LPCSTR lpRequested, CreateFileA_typedef pfn,
-	DWORD dwDesiredAccess, DWORD dwShareMode, LPSECURITY_ATTRIBUTES lpSecurityAttributes,
-	DWORD dwCreationDisposition, DWORD dwFlagsAndAttributes, HANDLE hTemplateFile)
-{
-	if (!config.GetBool("SafeDiscSupport", false) || !lpRequested)
-		return INVALID_HANDLE_VALUE;
-	const char* base = LastPathComponentEarly(lpRequested);
-	if (!SafeDisc_IsLocaleDllBaseNameEarly(base))
-		return INVALID_HANDLE_VALUE;
-
-	char path[MAX_PATH];
-	if (GetMainExecutableDirectory(path, MAX_PATH) && strcat_s(path, MAX_PATH, base) == 0)
-	{
-		HANDLE h = pfn(path, dwDesiredAccess, dwShareMode, lpSecurityAttributes, dwCreationDisposition, dwFlagsAndAttributes, hTemplateFile);
-		if (h != INVALID_HANDLE_VALUE)
-		{
-			log("SafeDisc: CreateFileA locale \"%s\" -> \"%s\"\n", lpRequested, path);
-			return h;
-		}
-	}
-	const char* cd = config.GetValue("CDROMDriveLetter");
-	if (cd && cd[0])
-	{
-		if (_snprintf_s(path, MAX_PATH, _TRUNCATE, "%c:\\%s", toupper((unsigned char)cd[0]), base) > 0)
-		{
-			HANDLE h = pfn(path, dwDesiredAccess, dwShareMode, lpSecurityAttributes, dwCreationDisposition, dwFlagsAndAttributes, hTemplateFile);
-			if (h != INVALID_HANDLE_VALUE)
-			{
-				log("SafeDisc: CreateFileA locale \"%s\" -> \"%s\"\n", lpRequested, path);
-				return h;
-			}
-		}
-	}
-	return INVALID_HANDLE_VALUE;
-}
-
-static HANDLE CreateFileViaAlternateLocalePathsW(LPCWSTR lpRequested, CreateFileW_typedef pfn,
-	DWORD dwDesiredAccess, DWORD dwShareMode, LPSECURITY_ATTRIBUTES lpSecurityAttributes,
-	DWORD dwCreationDisposition, DWORD dwFlagsAndAttributes, HANDLE hTemplateFile)
-{
-	if (!config.GetBool("SafeDiscSupport", false) || !lpRequested)
-		return INVALID_HANDLE_VALUE;
-	char narrow[MAX_PATH * 4];
-	if (WideCharToMultiByte(CP_ACP, 0, lpRequested, -1, narrow, sizeof(narrow), NULL, NULL) <= 0)
-		return INVALID_HANDLE_VALUE;
-	const char* base = LastPathComponentEarly(narrow);
-	if (!SafeDisc_IsLocaleDllBaseNameEarly(base))
-		return INVALID_HANDLE_VALUE;
-
-	char pathA[MAX_PATH];
-	wchar_t pathW[MAX_PATH];
-	if (GetMainExecutableDirectory(pathA, MAX_PATH) && strcat_s(pathA, MAX_PATH, base) == 0)
-	{
-		if (MultiByteToWideChar(CP_ACP, 0, pathA, -1, pathW, MAX_PATH) > 0)
-		{
-			HANDLE h = pfn(pathW, dwDesiredAccess, dwShareMode, lpSecurityAttributes, dwCreationDisposition, dwFlagsAndAttributes, hTemplateFile);
-			if (h != INVALID_HANDLE_VALUE)
-			{
-				log("SafeDisc: CreateFileW locale \"%ls\" -> \"%ls\"\n", lpRequested, pathW);
-				return h;
-			}
-		}
-	}
-	const char* cd = config.GetValue("CDROMDriveLetter");
-	if (cd && cd[0])
-	{
-		if (_snprintf_s(pathA, MAX_PATH, _TRUNCATE, "%c:\\%s", toupper((unsigned char)cd[0]), base) > 0)
-		{
-			if (MultiByteToWideChar(CP_ACP, 0, pathA, -1, pathW, MAX_PATH) > 0)
-			{
-				HANDLE h = pfn(pathW, dwDesiredAccess, dwShareMode, lpSecurityAttributes, dwCreationDisposition, dwFlagsAndAttributes, hTemplateFile);
-				if (h != INVALID_HANDLE_VALUE)
-				{
-					log("SafeDisc: CreateFileW locale \"%ls\" -> \"%ls\"\n", lpRequested, pathW);
-					return h;
-				}
-			}
-		}
-	}
-	return INVALID_HANDLE_VALUE;
-}
-
 HANDLE WINAPI CreateFileA_Hook(LPCSTR lpFileName, DWORD dwDesiredAccess, DWORD dwShareMode, LPSECURITY_ATTRIBUTES lpSecurityAttributes, DWORD dwCreationDisposition, DWORD dwFlagsAndAttributes, HANDLE hTemplateFile)
 {
 	std::string strFileName;
@@ -444,16 +337,7 @@ HANDLE WINAPI CreateFileA_Hook(LPCSTR lpFileName, DWORD dwDesiredAccess, DWORD d
 		lpFileName = strFileName.c_str();
 	}
 
-	HANDLE ret = CreateFileViaAlternateLocalePathsA(lpFileName, CreateFileA_Orig,
-		dwDesiredAccess, dwShareMode, lpSecurityAttributes, dwCreationDisposition, dwFlagsAndAttributes, hTemplateFile);
-	if (ret != INVALID_HANDLE_VALUE)
-	{
-		if (logCreateFile && lpFileName && _stricmp(lpFileName, "CONOUT$") != 0)
-			log("CreateFileA_Hook Hook - lpFileName: %s ret: %08X\n", lpFileName, (unsigned)(uintptr_t)ret);
-		return ret;
-	}
-
-	ret = CheckForSecDrv(lpFileName, CreateFileA_Orig);
+	HANDLE ret = CheckForSecDrv(lpFileName, CreateFileA_Orig);
 	if (ret == INVALID_HANDLE_VALUE)
 	{
 		const char* CDROMDriveLetter = config.GetValue("CDROMDriveLetter");
@@ -483,16 +367,7 @@ HANDLE WINAPI CreateFileA_Hook_KBase(LPCSTR lpFileName, DWORD dwDesiredAccess, D
 		strFileName = config.GetFileMapping(lpFileName);
 		lpFileName = strFileName.c_str();
 	}
-	HANDLE ret = CreateFileViaAlternateLocalePathsA(lpFileName, CreateFileA_Orig_KBase,
-		dwDesiredAccess, dwShareMode, lpSecurityAttributes, dwCreationDisposition, dwFlagsAndAttributes, hTemplateFile);
-	if (ret != INVALID_HANDLE_VALUE)
-	{
-		if (logCreateFile && lpFileName && _stricmp(lpFileName, "CONOUT$") != 0)
-			log("CreateFileA_Hook_KBase Hook - lpFileName: %s ret: %08X\n", lpFileName, (unsigned)(uintptr_t)ret);
-		return ret;
-	}
-
-	ret = CheckForSecDrv(lpFileName, CreateFileA_Orig_KBase);
+	HANDLE ret = CheckForSecDrv(lpFileName, CreateFileA_Orig_KBase);
 	if (ret == INVALID_HANDLE_VALUE)
 		ret = CreateFileA_Orig_KBase(lpFileName, dwDesiredAccess, dwShareMode, lpSecurityAttributes, dwCreationDisposition, dwFlagsAndAttributes, hTemplateFile);
 
@@ -514,16 +389,7 @@ HANDLE WINAPI CreateFileW_Hook(LPCWSTR lpFileName, DWORD dwDesiredAccess, DWORD 
 		usePath = (LPCWSTR)tempPathHolder;
 	}
 
-	HANDLE ret = CreateFileViaAlternateLocalePathsW(usePath, CreateFileW_Orig,
-		dwDesiredAccess, dwShareMode, lpSecurityAttributes, dwCreationDisposition, dwFlagsAndAttributes, hTemplateFile);
-	if (ret != INVALID_HANDLE_VALUE)
-	{
-		if (logCreateFile && usePath && wcscmp(usePath, L"CONOUT$") != 0)
-			log("CreateFileW_Hook - lpFileName: %ls ret: %08X\n", usePath, (unsigned)(uintptr_t)ret);
-		return ret;
-	}
-
-	ret = CheckForSecDrvW(usePath, CreateFileW_Orig);
+	HANDLE ret = CheckForSecDrvW(usePath, CreateFileW_Orig);
 	if (ret != INVALID_HANDLE_VALUE)
 	{
 		if (logCreateFile && usePath && wcscmp(usePath, L"CONOUT$") != 0)
@@ -560,16 +426,7 @@ HANDLE WINAPI CreateFileW_Hook_KBase(LPCWSTR lpFileName, DWORD dwDesiredAccess, 
 		usePath = (LPCWSTR)tempPathHolder;
 	}
 
-	HANDLE ret = CreateFileViaAlternateLocalePathsW(usePath, CreateFileW_Orig_KBase,
-		dwDesiredAccess, dwShareMode, lpSecurityAttributes, dwCreationDisposition, dwFlagsAndAttributes, hTemplateFile);
-	if (ret != INVALID_HANDLE_VALUE)
-	{
-		if (logCreateFile && usePath && wcscmp(usePath, L"CONOUT$") != 0)
-			log("CreateFileW_Hook_KBase - lpFileName: %ls ret: %08X\n", usePath, (unsigned)(uintptr_t)ret);
-		return ret;
-	}
-
-	ret = CheckForSecDrvW(usePath, CreateFileW_Orig_KBase);
+	HANDLE ret = CheckForSecDrvW(usePath, CreateFileW_Orig_KBase);
 	if (ret != INVALID_HANDLE_VALUE)
 	{
 		if (logCreateFile && usePath && wcscmp(usePath, L"CONOUT$") != 0)
@@ -755,48 +612,6 @@ static bool IsKnownWindowsSystemDllBaseName(const char* base)
 	return false;
 }
 
-static bool SafeDisc_IsLocaleDllBaseName(const char* base)
-{
-	if (!base)
-		return false;
-	size_t n = strlen(base);
-	if (n < 10 || n > 16)
-		return false;
-	if (_strnicmp(base, "SD", 2) != 0)
-		return false;
-	if (_stricmp(base + n - 4, ".dll") != 0)
-		return false;
-	return true;
-}
-
-static HMODULE SafeDisc_TryLoadLocaleDll(const char* baseFileName)
-{
-	char path[MAX_PATH];
-	HMODULE mod;
-
-	if (!GetMainExecutableDirectory(path, MAX_PATH))
-		return NULL;
-	if (strcat_s(path, MAX_PATH, baseFileName) != 0)
-		return NULL;
-	mod = LoadLibraryA_Orig(path);
-	if (mod)
-	{
-		log("SafeDisc: locale DLL %s -> %s (%08X)\n", baseFileName, path, (DWORD)mod);
-		return mod;
-	}
-
-	const char* cd = config.GetValue("CDROMDriveLetter");
-	if (cd && cd[0])
-	{
-		if (_snprintf_s(path, MAX_PATH, _TRUNCATE, "%c:\\%s", toupper((unsigned char)cd[0]), baseFileName) <= 0)
-			return NULL;
-		mod = LoadLibraryA_Orig(path);
-		if (mod)
-			log("SafeDisc: locale DLL %s -> %s (%08X)\n", baseFileName, path, (DWORD)mod);
-	}
-	return mod;
-}
-
 HMODULE WINAPI LoadLibraryW_Hook(LPCWSTR lpLibFileName)
 {
 	HMODULE ret = LoadLibraryW_Orig(lpLibFileName);
@@ -837,17 +652,6 @@ HMODULE WINAPI LoadLibraryA_Hook(LPCSTR lpLibFileName)
 		}
 	}
 
-	if (!ret && lpLibFileName && config.GetBool("SafeDiscSupport", false))
-	{
-		const char* base = strrchr(lpLibFileName, '\\');
-		base = base ? base + 1 : lpLibFileName;
-		const char* alt = strrchr(lpLibFileName, '/');
-		if (alt && (!base || alt > base))
-			base = alt + 1;
-		if (SafeDisc_IsLocaleDllBaseName(base))
-			ret = SafeDisc_TryLoadLocaleDll(base);
-	}
-	
 	if (strstr(lpLibFileName, "~"))
 		log("LoadLibraryA_Hook: %s %08X\n", lpLibFileName == NULL ? "NULL" : lpLibFileName, ret);
 

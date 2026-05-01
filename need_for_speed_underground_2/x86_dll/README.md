@@ -54,7 +54,7 @@ Resolved next to the **main executable** (see `securomloader.cpp` / `GetMainExec
 
 ### NFS Underground 2
 
-- **Install vs play disc:** In this project’s typical deployment (e.g. Wine / Android / a fixed drive letter for the game folder), the **install** often lives on **`A:\`** (e.g. `A:\speed2.exe` with **`version.dll`** and **`version.json` beside it). That is **not** the play disc. **`CDROMDriveLetter`** must still be the drive where **disc 2** is mounted (e.g. **`F`**) so **`bin.dat`**, volume checks, and locale DLLs resolve from **retail disc 2**—do **not** set `CDROMDriveLetter` to `A` just because the game is on `A:\` (that would spoof the install drive as a CD-ROM).
+- **Install vs play disc:** In this project’s typical deployment (e.g. Wine / Android / a fixed drive letter for the game folder), the **install** often lives on **`A:\`** (e.g. `A:\speed2.exe` with **`version.dll`** and **`version.json` beside it). That is **not** the play disc. **`CDROMDriveLetter`** must still be the drive where **disc 2** is mounted (e.g. **`F`**) so **`bin.dat`** and volume checks match **retail disc 2**—do **not** set `CDROMDriveLetter` to `A` just because the game is on `A:\` (that would spoof the install drive as a CD-ROM).
 - **Wine / Proton:** the game often calls **`GetVolumeInformationW`** / **`GetDriveTypeW`** / **`CreateFileW`** instead of the `*A` APIs. This loader hooks **both** ANSI and Unicode variants so volume label spoofing (`CDROMVolumeName`) and the configured play-disc letter apply under Wine as well.
 
 - Installer / disc layouts live under **`../iso1/`** (disc 1) and **`../iso2/`** (disc 2, includes `speed2.exe`).
