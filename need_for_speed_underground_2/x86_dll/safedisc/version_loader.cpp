@@ -622,6 +622,8 @@ DWORD StealCRCTablePtr = 0;
 DWORD savedFuncCall = 0;
 DWORD HookDecodeTableAddr = -1L, RelativeGrabberCall = 0;;
 DWORD FirstCopy = 0, SecondCopy = 0, ThirdCopy = 0;
+/** After first CdCheck2 patch, byte scan no longer matches  reuse RVA on AuthServ reload (same module may stay patched in memory). */
+static DWORD s_CdCheck2CallAddrRva = (DWORD)-1;
 int amountToCopy = 0;
 BYTE* ThirdKey = new BYTE[1024];
 
@@ -838,6 +840,17 @@ HMODULE WINAPI LoadLibraryA_Hook(LPCSTR lpLibFileName)
 			logc(FOREGROUND_GREEN, "LoadLibraryA_Hook: Reloading AuthServ.dll for possible CD Checks\n");
 			
 			DWORD CdCheck2CallAddr = FindHexString(StartAddr, EndAddr, "52A1????????FF501083C40C8B4DF88901E9", "CdCheck2CallAddr");
+			if (CdCheck2CallAddr == (DWORD)-1 && s_CdCheck2CallAddrRva != (DWORD)-1)
+			{
+				CdCheck2CallAddr = StartAddr + s_CdCheck2CallAddrRva;
+				logc(FOREGROUND_GREEN, "CdCheck2CallAddr: using cached RVA %08X -> %08X\n", s_CdCheck2CallAddrRva, CdCheck2CallAddr);
+			}
+			else if (CdCheck2CallAddr != (DWORD)-1 && s_CdCheck2CallAddrRva == (DWORD)-1)
+			{
+				s_CdCheck2CallAddrRva = CdCheck2CallAddr - StartAddr;
+				logc(FOREGROUND_GREEN, "CdCheck2CallAddr: caching RVA %08X\n", s_CdCheck2CallAddrRva);
+			}
+
 			if (CdCheck2CallAddr != -1L)
 			{
 				UnProtect_memcpy((BYTE*)(CdCheck2CallAddr + 1), PatchCDPtr, 8);
