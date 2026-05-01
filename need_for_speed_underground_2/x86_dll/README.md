@@ -4,13 +4,13 @@
 
 ### CI (GitHub Actions)
 
-On **tag push**, workflow [`.github/workflows/build-nfsug2-version-dll.yml`](../../.github/workflows/build-nfsug2-version-dll.yml) builds **Release Win32** with **MSBuild** (`microsoft/setup-msbuild`) and attaches **`version.dll`** to a **GitHub Release** for that tag (plus a workflow artifact). **Manual runs** (`workflow_dispatch`) build and upload the artifact only. Example: `git tag nfsug2-v1.0.0 && git push origin nfsug2-v1.0.0`.
+On **tag push**, workflow [`.github/workflows/build-nfsug2-version-dll.yml`](../../.github/workflows/build-nfsug2-version-dll.yml) builds **Release Win32** (`SecuROMLoader.vcxproj`) and attaches **`version.dll`** and **`version.json`** to a **GitHub Release** for that tag (plus a workflow artifact). **Manual runs** (`workflow_dispatch`) build and upload the artifact only. Example: `git tag nfsug2-v1.0.0 && git push origin nfsug2-v1.0.0`.
 
 ### Local (Visual Studio)
 
 1. Open `SecuROMLoader.sln` in Visual Studio (open the **folder containing** `SecuROMLoader.vcxproj`, so relative paths resolve).
 2. Set configuration to **Release** and platform **x86** (maps to **Win32** in the project).
-3. Build. Output is **`version.dll`** (`TargetName` in `SecuROMLoader.vcxproj`), under something like `Release\` or `Debug\` next to the `.vcxproj`, depending on VS defaults.
+3. Build. Output is **`version.dll`** under `bin\Win32\Release\` (Release) next to the `.vcxproj`.
 4. If the build fails on the toolset, edit `SecuROMLoader.vcxproj` and change `PlatformToolset` (`v143` → `v142`, etc.) to match what you have installed.
 
 **Already in this tree:** sources under `version/`, `shared/`, `virusek/`, `shared/minhook/`, plus `version\version.def`. Nothing else is required in-repo for a normal MSVC link beyond the Windows SDK and C++ workload.
@@ -19,13 +19,14 @@ On **tag push**, workflow [`.github/workflows/build-nfsug2-version-dll.yml`](../
 
 ## Deploy (game folder)
 
-1. Copy **`version.dll`** next to the game executable that will load the proxy (same layout as upstream SecuROMLoader for your target title).
-2. The loader calls `config.LoadConfig("version.json")` — filename is fixed. Copy the repo template **`need_for_speed_underground_2/nfs-underground-2.version.json`** into the **same directory as the game `.exe`** and rename it to **`version.json`** (or merge its keys into an existing `version.json`).
-3. Keep the real Microsoft **`version.dll`** in `System32`; this project’s DLL forwards to it after resolving the system path (see `version\version.cpp`).
+1. Copy **`version.dll`** next to the game executable (e.g. **`speed2.exe`** for NFS Underground 2). The stock **`version.dll`** remains in `System32`; this proxy loads it from the resolved system path and forwards exports (`version\version.cpp`).
+2. Config is loaded from **`version.json` in the same directory as the main `.exe`**. Copy the repo template **`../version.json`** (or merge keys) beside the game exe.
 
 ## Config: `version.json`
 
-Loaded from the **process current directory** (typically the game’s install folder when you start the `.exe` from Explorer).
+Resolved next to the **main executable** (see `securomloader.cpp` / `GetMainExecutableDirectory`).
+
+**Bootstrap log:** On every load, **`version.loader.log`** is appended beside the main `.exe` with a timestamp, PID, exe path, and **`version.dll` path**. This does **not** depend on `version.json` or `logging`, so you can confirm the proxy ran even when config is missing or logging is off.
 
 **JSON:** valid commas between properties; **keys** are case-sensitive (`tiny-json`).
 
@@ -33,7 +34,7 @@ Loaded from the **process current directory** (typically the game’s install fo
 |-----|------|------------|
 | `logging` | bool | Console / file logging in `SecuROMLoader` |
 | `logFile` | string | Log path; may substitute `ProcessID` (see `securomloader.cpp`) |
-| `logCreateFile` | bool | Verbose `CreateFile` / attribute logging |
+| `logCreateFile` | bool | Verbose `CreateFile` / attribute logging (default **true** if omitted) |
 | `UseVirusekMethod` | bool | Hook `FindWindowA` + SecuROM scan (`virusekmethod.cpp`) |
 | `CDROMDriveLetter` | string | Spoofed disc letter (e.g. `F`) |
 | `CDROMVolumeName` | string | Volume label for that letter |
@@ -46,7 +47,7 @@ Loaded from the **process current directory** (typically the game’s install fo
 ### NFS Underground 2
 
 - Installer / disc layouts live under **`../iso1/`** (disc 1) and **`../iso2/`** (disc 2, includes `speed2.exe`).
-- Template JSON: **`../nfs-underground-2.version.json`** — copy/rename to **`version.json`** beside the installed `speed2.exe` and tune `CDROMVolumeName` / mappings if your protection still checks drives.
+- Template JSON in repo (same tree): **`../version.json`** — copy beside **`speed2.exe`** as **`version.json`** and tune `CDROMVolumeName` / mappings if your protection still checks drives.
 
 ## Runtime / behavior gaps (optional)
 

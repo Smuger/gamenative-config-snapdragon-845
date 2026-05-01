@@ -1,6 +1,7 @@
 #define _CRT_SECURE_NO_WARNINGS
 #include <windows.h>
 #include <stdio.h>
+#include <string.h>
 #include <conio.h>
 #include "utils.h"
 
@@ -823,6 +824,56 @@ void RestrictProcessors(int CPUs)
 		else
 			log("Process affinity set successfully. CPU Count = %d\n", CPUs);
 	}
+}
+
+BOOL GetMainExecutableDirectory(char* buf, DWORD cchBuf)
+{
+	if (!buf || cchBuf < 4)
+		return FALSE;
+	DWORD n = GetModuleFileNameA(NULL, buf, cchBuf);
+	if (n == 0 || n >= cchBuf)
+		return FALSE;
+	char* slash = strrchr(buf, '\\');
+	if (!slash)
+		slash = strrchr(buf, '/');
+	if (!slash)
+		return FALSE;
+	slash[1] = '\0';
+	return TRUE;
+}
+
+void WriteLoaderBootstrapLog(HMODULE ourModule)
+{
+	char path[MAX_PATH];
+	if (!GetMainExecutableDirectory(path, MAX_PATH))
+		return;
+	if (strcat_s(path, MAX_PATH, "version.loader.log") != 0)
+		return;
+
+	char exePath[MAX_PATH];
+	char dllPath[MAX_PATH];
+	GetModuleFileNameA(NULL, exePath, MAX_PATH);
+	GetModuleFileNameA(ourModule, dllPath, MAX_PATH);
+
+	SYSTEMTIME st;
+	GetLocalTime(&st);
+
+	FILE* fp = NULL;
+	if (fopen_s(&fp, path, "a") != 0 || fp == NULL)
+		return;
+
+	fprintf(fp,
+		"[%04u-%02u-%02u %02u:%02u:%02u] pid=%lu proxy_loaded=1 exe=\"%s\" dll=\"%s\"\n",
+		(unsigned)st.wYear,
+		(unsigned)st.wMonth,
+		(unsigned)st.wDay,
+		(unsigned)st.wHour,
+		(unsigned)st.wMinute,
+		(unsigned)st.wSecond,
+		(unsigned long)GetCurrentProcessId(),
+		exePath,
+		dllPath);
+	fclose(fp);
 }
 
 BOOL GetDirectoryOfDLL(const char* dllName, char* outDir, DWORD outDirSize)

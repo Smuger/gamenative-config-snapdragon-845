@@ -32,7 +32,7 @@ OpenFileMappingW_typedef OpenFileMappingW_Orig;
 
 HMODULE hOurModule;
 Config config;
-bool logCreateFile = false;
+bool logCreateFile = true;
 int HWBPStage = 0;
 int HWBPCheckDone = 0;
 bool Securom7Confirmed = false;
@@ -399,15 +399,38 @@ NTSTATUS WINAPI NtContinue_Hook(PCONTEXT Context, BOOLEAN RaiseAlert)
 void SecuROMLoader(HMODULE hModule)
 {
 	hOurModule = hModule;
-	config.LoadConfig("version.json");
+	WriteLoaderBootstrapLog(hModule);
+
+	/* fopen("version.json") uses the process CWD, not the exe folder — shortcuts often break that. */
+	char versionJsonPath[MAX_PATH];
+	if (GetMainExecutableDirectory(versionJsonPath, MAX_PATH) && strcat_s(versionJsonPath, MAX_PATH, "version.json") == 0)
+		config.LoadConfig(versionJsonPath);
+	else
+		config.LoadConfig("version.json");
+
+	logCreateFile = config.GetBool("logCreateFile", true);
 
 	if (config.GetBool("logging"))
 	{
 		CreateConsole();
 		HideConsoleCursor();
 		NString logFile = config.GetValue("logFile");
-		SetLogging(true, logFile.IsEmpty() ? NULL : (LPCSTR)logFile.Replace("ProcessID", NString::Format("%d", GetCurrentProcessId())));
-		logCreateFile = config.GetBool("logCreateFile");
+		LPCSTR logPathArg = NULL;
+		char logFull[MAX_PATH];
+		if (!logFile.IsEmpty())
+		{
+			logFile = logFile.Replace("ProcessID", NString::Format("%d", GetCurrentProcessId()));
+			LPCSTR raw = (LPCSTR)logFile;
+			const bool absolute = (strlen(raw) >= 3 && raw[1] == ':' && (raw[2] == '\\' || raw[2] == '/'))
+				|| (strlen(raw) >= 2 && raw[0] == '\\' && raw[1] == '\\');
+			if (absolute)
+				logPathArg = raw;
+			else if (GetMainExecutableDirectory(logFull, MAX_PATH) && strcat_s(logFull, MAX_PATH, raw) == 0)
+				logPathArg = logFull;
+			else
+				logPathArg = raw;
+		}
+		SetLogging(true, logPathArg);
 	}
 	else
 		SetLogging(false);

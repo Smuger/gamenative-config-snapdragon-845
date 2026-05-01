@@ -44,6 +44,10 @@ BOOL IsReadablePointer(void* ptr);
 DWORD GetEntryPointFromBase(DWORD base);
 void RestrictProcessors(int CPUs);
 BOOL GetDirectoryOfDLL(const char* dllName, char* outDir, DWORD outDirSize);
+/** Directory of the main executable, with trailing '\\' (e.g. C:\\Games\\NFSUG2\\). */
+BOOL GetMainExecutableDirectory(char* buf, DWORD cchBuf);
+/** Append one line to version.loader.log beside the main exe (always; ignores version.json logging settings). */
+void WriteLoaderBootstrapLog(HMODULE ourModule);
 
 #ifdef FOREGROUND_BLUE
 #undef FOREGROUND_BLUE
