@@ -1,7 +1,7 @@
 #pragma warning(disable: 4731) // Disable warning C4731: 'Decrypt24Function': frame pointer register 'ebx' modified by inline assembly cod
 #define _CRT_SECURE_NO_WARNINGS
 #include <Windows.h>
-#include "../../shared/utils.h"
+#include "../shared/utils.h"
 
 extern HINSTANCE hInstanceAuthServ;
 extern HINSTANCE hInstanceSecServ;

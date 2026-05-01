@@ -35,7 +35,7 @@ int HWBPCheckDone = 0;
 bool Securom7Confirmed = false;
 
 void WINAPI KiUserExceptionDispatcher_RealHook(PEXCEPTION_RECORD ExceptionRecord, PCONTEXT Context);
-void __declspec(naked) WINAPI KiUserExceptionDispatcher_Hook(PEXCEPTION_RECORD ExceptionRecord, PCONTEXT Context);
+void WINAPI KiUserExceptionDispatcher_Hook(PEXCEPTION_RECORD ExceptionRecord, PCONTEXT Context);
 
 HANDLE WINAPI OpenFileMappingW_Hook(DWORD dwDesiredAccess, BOOL bInheritHandle, LPCWSTR lpName)
 {

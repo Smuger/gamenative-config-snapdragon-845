@@ -1,16 +1,16 @@
 #define _CRT_SECURE_NO_WARNINGS
 #include <Windows.h>
-#include "../../version/version.h"
+#include "../version/version.h"
 #include <filesystem>
-#include "../../shared/nstring.h"
+#include "../shared/nstring.h"
 #include <stdio.h>
 #include <conio.h>
 #include <psapi.h>
 #include <eh.h>
-#include "../../shared/minhook/minhook.h"
+#include "../shared/minhook/minhook.h"
 #include <winternl.h>
 #include "memhack.h"
-#include "../../shared/config.h"
+#include "../shared/config.h"
 #include <ntddscsi.h>
 #include <map>
 
@@ -53,12 +53,12 @@
 #define EJECT_DEBUGGER_TIMEOUT (1*1000)
 //#define USE_SDLOADER
 
-#include "../../shared/utils.h"
+#include "../shared/utils.h"
 #include "secdrv_ioctl.h"
-#include "../../version/compatibility.h"
+#include "../version/compatibility.h"
 #include "../virusek/securom7_hooks.h"
 #include "../virusek/virusekmethod.h"
-#include "../../shared/config.h"
+#include "../shared/config.h"
 
 bool logCreateFile = false;
 bool logSCSIPassThrough = false;
