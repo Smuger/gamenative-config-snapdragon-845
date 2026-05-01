@@ -4,8 +4,8 @@
 #include "../shared/minhook/minhook.h"
 #include "../shared/utils.h"
 #include "../shared/config.h"
-#include "../virusek/virusekmethod.h"
-#include "virusektriggertrace.h"
+#include "virusekmethod.h"
+#include "trigger_trace.h"
 
 extern Config config;
 

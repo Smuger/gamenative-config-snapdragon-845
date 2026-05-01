@@ -11,7 +11,7 @@
 #include "deviceiocontrolhook.h"
 #include "compatibility.h"
 #include "../virusek/virusekmethod.h"
-#include "virusektriggertrace.h"
+#include "../virusek/trigger_trace.h"
 #include <vector>
 
 NtDeviceIoControlFile_typedef NtDeviceIoControlFile_Orig;
@@ -68,6 +68,51 @@ static HANDLE SafeDisc_OpenSecDrvW(LPCWSTR lpFileName, CreateFileW_typedef pfn)
 	if (h != INVALID_HANDLE_VALUE)
 		log("SafeDisc: SecDrv -> NUL (W) handle=%p\n", (void*)h);
 	return h;
+}
+
+/** SafeDisc loads locale DLLs as bare names (e.g. SD0409.dll = English). Often only on disc root — retry exe dir then CD letter from config. */
+static bool SafeDisc_IsLocaleDllBaseName(const char* base)
+{
+	if (!base)
+		return false;
+	size_t n = strlen(base);
+	if (n < 10 || n > 16)
+		return false;
+	if (_strnicmp(base, "SD", 2) != 0)
+		return false;
+	if (_stricmp(base + n - 4, ".dll") != 0)
+		return false;
+	return true;
+}
+
+static HMODULE SafeDisc_TryLoadLocaleDll(const char* baseFileName)
+{
+	char path[MAX_PATH];
+	HMODULE mod;
+
+	if (!GetMainExecutableDirectory(path, MAX_PATH))
+		return NULL;
+	if (strcat_s(path, MAX_PATH, baseFileName) != 0)
+		return NULL;
+	mod = LoadLibraryA_Orig(path);
+	if (mod)
+	{
+		log("SafeDisc: locale DLL %s -> %s (%08X)\n", baseFileName, path, (DWORD)mod);
+		return mod;
+	}
+
+	if (CDROMDriveLetter && CDROMDriveLetter[0])
+	{
+		if (_snprintf_s(path, MAX_PATH, _TRUNCATE, "%c:\\%s", toupper((unsigned char)CDROMDriveLetter[0]), baseFileName) <= 0)
+			return NULL;
+		mod = LoadLibraryA_Orig(path);
+		if (mod)
+		{
+			log("SafeDisc: locale DLL %s -> %s (%08X)\n", baseFileName, path, (DWORD)mod);
+			return mod;
+		}
+	}
+	return NULL;
 }
 
 HANDLE WINAPI OpenFileMappingW_Hook(DWORD dwDesiredAccess, BOOL bInheritHandle, LPCWSTR lpName)
@@ -521,6 +566,17 @@ HMODULE WINAPI LoadLibraryA_Hook(LPCSTR lpLibFileName)
 	}*/
 
 	HMODULE ret = LoadLibraryA_Orig(lpLibFileName);
+
+	if (!ret && lpLibFileName && config.GetBool("SafeDiscSupport", false))
+	{
+		const char* base = strrchr(lpLibFileName, '\\');
+		base = base ? base + 1 : lpLibFileName;
+		const char* alt = strrchr(lpLibFileName, '/');
+		if (alt && (!base || alt > base))
+			base = alt + 1;
+		if (SafeDisc_IsLocaleDllBaseName(base))
+			ret = SafeDisc_TryLoadLocaleDll(base);
+	}
 
 	if (lpLibFileName)
 		log("LoadLibraryA_Hook: Loaded %s (%08X)\n", lpLibFileName, (DWORD)ret);

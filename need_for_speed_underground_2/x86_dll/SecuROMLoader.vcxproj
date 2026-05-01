@@ -13,10 +13,11 @@
   <ItemGroup>
     <ClCompile Include="version\dllmain.cpp" />
     <ClCompile Include="version\version.cpp" />
-    <ClCompile Include="version\securomloader.cpp" />
-    <ClCompile Include="version\virusektriggertrace.cpp" />
+    <ClCompile Include="safedisc\version_loader.cpp" />
+    <ClCompile Include="safedisc\safedisc2_decrypt.cpp" />
+    <ClCompile Include="virusek\securom7_hooks.cpp" />
+    <ClCompile Include="virusek\trigger_trace.cpp" />
     <ClCompile Include="safedisc\secdrv_ioctl.cpp" />
-    <ClCompile Include="version\deviceiocontrolhook.cpp" />
     <ClCompile Include="version\compatibility.cpp" />
     <ClCompile Include="shared\config.cpp" />
     <ClCompile Include="shared\utils.cpp" />
@@ -35,10 +36,12 @@
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="version\version.h" />
-    <ClInclude Include="version\deviceiocontrolhook.h" />
     <ClInclude Include="version\compatibility.h" />
-    <ClInclude Include="version\virusektriggertrace.h" />
+    <ClInclude Include="virusek\securom7_hooks.h" />
+    <ClInclude Include="virusek\trigger_trace.h" />
     <ClInclude Include="safedisc\secdrv_ioctl.h" />
+    <ClInclude Include="safedisc\memhack.h" />
+    <ClInclude Include="safedisc\ioctl_codes.h" />
     <ClInclude Include="shared\config.h" />
     <ClInclude Include="shared\utils.h" />
     <ClInclude Include="shared\crcfixer.h" />
