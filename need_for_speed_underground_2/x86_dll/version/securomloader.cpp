@@ -98,6 +98,20 @@ DWORD WINAPI GetLogicalDrives_Hook()
 
 UINT WINAPI GetDriveTypeA_Hook(LPCSTR lpRootPathName)
 {
+	const bool diskTrace = config.GetBool("VirusekDiskTrace", false);
+	const int matchesCd =
+		(CDROMDriveLetter && lpRootPathName && lpRootPathName[0] && toupper(lpRootPathName[0]) == toupper(CDROMDriveLetter[0]))
+			? 1
+			: 0;
+	if (diskTrace)
+		log("[VirusekDiskTrace] GetDriveTypeA path=\"%s\" CDROMDriveLetter=\"%s\" matchesLetter=%d\n",
+			lpRootPathName ? lpRootPathName : "(null)",
+			CDROMDriveLetter ? CDROMDriveLetter : "(null)",
+			matchesCd);
+
+	if (matchesCd && config.GetBool("VirusekTriggerFirstDriveTypeMatch", false) && config.GetBool("UseVirusekMethod"))
+		TryRunVirusekMethodOnce("GetDriveTypeA");
+
 	if (CDROMDriveLetter && lpRootPathName && toupper(lpRootPathName[0]) == toupper(CDROMDriveLetter[0]))
 	{
 		logc(FOREGROUND_GREEN, "GetDriveTypeA_Hook = %s IS A CDROM!\n", lpRootPathName ? lpRootPathName : "NULL");
@@ -109,6 +123,23 @@ UINT WINAPI GetDriveTypeA_Hook(LPCSTR lpRootPathName)
 
 UINT WINAPI GetDriveTypeW_Hook(LPCWSTR lpRootPathName)
 {
+	const bool diskTrace = config.GetBool("VirusekDiskTrace", false);
+	int matchesCd = 0;
+	if (CDROMDriveLetter && lpRootPathName && lpRootPathName[0])
+	{
+		wchar_t d = (wchar_t)towupper((unsigned char)CDROMDriveLetter[0]);
+		if (towupper(lpRootPathName[0]) == d)
+			matchesCd = 1;
+	}
+	if (diskTrace)
+		log("[VirusekDiskTrace] GetDriveTypeW path=\"%ls\" CDROMDriveLetter=\"%s\" matchesLetter=%d\n",
+			lpRootPathName ? lpRootPathName : L"(null)",
+			CDROMDriveLetter ? CDROMDriveLetter : "(null)",
+			matchesCd);
+
+	if (matchesCd && config.GetBool("VirusekTriggerFirstDriveTypeMatch", false) && config.GetBool("UseVirusekMethod"))
+		TryRunVirusekMethodOnce("GetDriveTypeW");
+
 	if (CDROMDriveLetter && lpRootPathName && lpRootPathName[0])
 	{
 		wchar_t d = (wchar_t)towupper((unsigned char)CDROMDriveLetter[0]);
@@ -124,6 +155,17 @@ UINT WINAPI GetDriveTypeW_Hook(LPCWSTR lpRootPathName)
 
 BOOL WINAPI GetVolumeInformationA_Hook(LPCSTR lpRootPathName, LPSTR lpVolumeNameBuffer, DWORD nVolumeNameSize, LPDWORD lpVolumeSerialNumber, LPDWORD lpMaximumComponentLength, LPDWORD lpFileSystemFlags, LPSTR lpFileSystemNameBuffer, DWORD nFileSystemNameSize)
 {
+	if (config.GetBool("VirusekDiskTrace", false))
+	{
+		const int matchesCd =
+			(CDROMDriveLetter && lpRootPathName && lpRootPathName[0] && toupper(lpRootPathName[0]) == toupper(CDROMDriveLetter[0]))
+				? 1
+				: 0;
+		log("[VirusekDiskTrace] GetVolumeInformationA lpRootPathName=\"%s\" CDROMDriveLetter=\"%s\" matchesLetter=%d\n",
+			lpRootPathName ? lpRootPathName : "(null)",
+			CDROMDriveLetter ? CDROMDriveLetter : "(null)",
+			matchesCd);
+	}
 	logc(FOREGROUND_BLUE, "GetVolumeInformationA_Hook: lpRootPathName: %s\n", lpRootPathName ? lpRootPathName : "NULL");
 	BOOL ret = GetVolumeInformationA_Orig(lpRootPathName, lpVolumeNameBuffer, nVolumeNameSize, lpVolumeSerialNumber, lpMaximumComponentLength, lpFileSystemFlags, lpFileSystemNameBuffer, nFileSystemNameSize);
 	const char* CDROMVolumeName = config.GetValue("CDROMVolumeName");
@@ -144,6 +186,17 @@ BOOL WINAPI GetVolumeInformationA_Hook(LPCSTR lpRootPathName, LPSTR lpVolumeName
 
 BOOL WINAPI GetVolumeInformationW_Hook(LPCWSTR lpRootPathName, LPWSTR lpVolumeNameBuffer, DWORD nVolumeNameSize, LPDWORD lpVolumeSerialNumber, LPDWORD lpMaximumComponentLength, LPDWORD lpFileSystemFlags, LPWSTR lpFileSystemNameBuffer, DWORD nFileSystemNameSize)
 {
+	if (config.GetBool("VirusekDiskTrace", false))
+	{
+		int matchesCd = 0;
+		if (CDROMDriveLetter && lpRootPathName && lpRootPathName[0]
+			&& towupper(lpRootPathName[0]) == (wchar_t)towupper((unsigned char)CDROMDriveLetter[0]))
+			matchesCd = 1;
+		log("[VirusekDiskTrace] GetVolumeInformationW lpRootPathName=\"%ls\" CDROMDriveLetter=\"%s\" matchesLetter=%d\n",
+			lpRootPathName ? lpRootPathName : L"(null)",
+			CDROMDriveLetter ? CDROMDriveLetter : "(null)",
+			matchesCd);
+	}
 	logc(FOREGROUND_BLUE, "GetVolumeInformationW_Hook: lpRootPathName: %ls\n", lpRootPathName ? lpRootPathName : L"NULL");
 	BOOL ret = GetVolumeInformationW_Orig(lpRootPathName, lpVolumeNameBuffer, nVolumeNameSize, lpVolumeSerialNumber, lpMaximumComponentLength, lpFileSystemFlags, lpFileSystemNameBuffer, nFileSystemNameSize);
 	const char* CDROMVolumeName = config.GetValue("CDROMVolumeName");
@@ -783,6 +836,6 @@ void SecuROMLoader(HMODULE hModule)
 	if (config.GetBool("VirusekProbeAtDllLoad", false))
 	{
 		log("[Virusek] PROBE (VirusekProbeAtDllLoad): RunVirusekMethod at DLL init — SecuROM layout is usually absent or encrypted here; expect RESULT: NO matching fingerprint.\n");
-		RunVirusekMethod();
+		TryRunVirusekMethodOnce("VirusekProbeAtDllLoad");
 	}
 }

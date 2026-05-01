@@ -142,6 +142,20 @@ void RunVirusekMethod()
 	log("[Virusek] ===== RunVirusekMethod end =====\n");
 }
 
+static bool s_virusekRanOnce = false;
+
+bool TryRunVirusekMethodOnce(const char* triggerName)
+{
+	if (!config.GetBool("UseVirusekMethod"))
+		return false;
+	if (s_virusekRanOnce)
+		return false;
+	s_virusekRanOnce = true;
+	log("[Virusek] TryRunVirusekMethodOnce trigger=%s\n", triggerName ? triggerName : "?");
+	RunVirusekMethod();
+	return true;
+}
+
 HWND WINAPI FindWindowA_Hook(LPCSTR lpClassName, LPCSTR lpWindowName)
 {
 	MH_STATUS status = MH_DisableHook(&FindWindowA);
@@ -151,7 +165,7 @@ HWND WINAPI FindWindowA_Hook(LPCSTR lpClassName, LPCSTR lpWindowName)
 		(int)status);
 	logc(FOREGROUND_BROWN, "FindWindowA_Hook: lpClassName: %s lpWindowName: %s status=%08X\n", lpClassName ? lpClassName : "NULL", lpWindowName ? lpWindowName : "NULL", status);
 
-	RunVirusekMethod();
+	TryRunVirusekMethodOnce("FindWindowA");
 
 	log("[Virusek] FindWindowA_Hook: calling original FindWindowA (one-shot hook disabled)\n");
 	

@@ -38,6 +38,9 @@ Resolved next to the **main executable** (see `securomloader.cpp` / `GetMainExec
 | `UseVirusekMethod` | bool | Hook `FindWindowA` + SecuROM scan (`virusekmethod.cpp`) |
 | `VirusekProbeAtDllLoad` | bool | If **true**, runs `RunVirusekMethod()` once right after hooks enable (diagnostic; usually **no** fingerprint match until after unpack) |
 | `VirusekTriggerTrace` | bool | If **true**, logs **`[VirusekTriggerTrace]`** lines for a fixed set of **user32** / **shell32** APIs (FindWindowW, FindWindowExA/W, EnumWindows, MessageBox*, ShowWindow, …) so you can pick an alternative trigger to `FindWindowA`. Not exhaustive; **ShowWindow** can be noisy. |
+| `VirusekDiskTrace` | bool | If **true**, logs **`[VirusekDiskTrace]`** lines from **`GetDriveTypeA`/`W`** and **`GetVolumeInformationA`/`W`** with **`CDROMDriveLetter`** and **`matchesLetter`** (1 = path uses your spoofed CD letter). Grep-friendly (`grep VirusekDiskTrace`). |
+| `VirusekTriggerEnumWindows` | bool | If **true** (with **`UseVirusekMethod`**), first **`EnumWindows`** call runs **`RunVirusekMethod`** once (shared global gate with other triggers). Enables **`EnumWindows`** hook even when **`VirusekTriggerTrace`** is false. |
+| `VirusekTriggerFirstDriveTypeMatch` | bool | If **true**, first **`GetDriveTypeA`/`W`** whose path matches **`CDROMDriveLetter`** runs **`RunVirusekMethod`** once (same global gate). |
 | `CDROMDriveLetter` | string | Spoofed disc letter (e.g. `F`) |
 | `CDROMVolumeName` | string | Volume label for that letter |
 | `fileMappings` | array of `{ "source", "target" }` | Path rewrites |
@@ -45,6 +48,8 @@ Resolved next to the **main executable** (see `securomloader.cpp` / `GetMainExec
 | `GeometryCheckOneToZero` | bool | CRC / geometry (`crcfixer.cpp`) |
 | `Override7C0` | string | Optional hex for `+7C0`-style checks |
 | `exeFile` | string | Optional; only `TestConfig()` in `config.cpp` reads it today |
+
+**Alternate Virusek triggers:** `FindWindowA` often never runs on Wine. Use **`VirusekTriggerEnumWindows`** and/or **`VirusekTriggerFirstDriveTypeMatch`** (see table). Only **one** run occurs per process across **`FindWindowA`**, **`EnumWindows`**, **`GetDriveType*`**, and **`VirusekProbeAtDllLoad`** (`TryRunVirusekMethodOnce`). Disable **`VirusekProbeAtDllLoad`** when testing alternate triggers so the probe does not consume the single run.
 
 ### NFS Underground 2
 

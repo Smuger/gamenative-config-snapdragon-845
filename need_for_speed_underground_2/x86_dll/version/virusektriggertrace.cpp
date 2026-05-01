@@ -3,7 +3,11 @@
 #include <stdio.h>
 #include "../shared/minhook/minhook.h"
 #include "../shared/utils.h"
+#include "../shared/config.h"
+#include "../virusek/virusekmethod.h"
 #include "virusektriggertrace.h"
+
+extern Config config;
 
 static BOOL HookOne(LPCWSTR module, LPCSTR name, LPVOID detour, LPVOID* original)
 {
@@ -40,9 +44,12 @@ static HWND WINAPI FindWindowExW_Trace(HWND a, HWND b, LPCWSTR c, LPCWSTR w)
 }
 
 static BOOL(WINAPI* EnumWindows_Orig)(WNDENUMPROC, LPARAM);
-static BOOL WINAPI EnumWindows_Trace(WNDENUMPROC cb, LPARAM p)
+static BOOL WINAPI EnumWindows_Combined(WNDENUMPROC cb, LPARAM p)
 {
-	log("[VirusekTriggerTrace] EnumWindows proc=%p lParam=%08X\n", (void*)cb, (unsigned)p);
+	if (config.GetBool("VirusekTriggerTrace", false))
+		log("[VirusekTriggerTrace] EnumWindows proc=%p lParam=%08X\n", (void*)cb, (unsigned)p);
+	if (config.GetBool("VirusekTriggerEnumWindows", false) && config.GetBool("UseVirusekMethod"))
+		TryRunVirusekMethodOnce("EnumWindows");
 	return EnumWindows_Orig(cb, p);
 }
 
@@ -108,10 +115,15 @@ static HINSTANCE WINAPI ShellExecuteA_Trace(HWND h, LPCSTR op, LPCSTR file, LPCS
 
 bool InstallVirusekTriggerTraceHooks(Config& config)
 {
-	if (!config.GetBool("VirusekTriggerTrace", false))
+	const bool trace = config.GetBool("VirusekTriggerTrace", false);
+	const bool enumVirusek = config.GetBool("VirusekTriggerEnumWindows", false) && config.GetBool("UseVirusekMethod");
+
+	if (!trace && !enumVirusek)
 		return true;
 
-	log("[VirusekTriggerTrace] Installing diagnostic hooks (see logs for API hits; not exhaustive).\n");
+	log("[VirusekTriggerTrace] Installing UI hooks (VirusekTriggerTrace=%d VirusekTriggerEnumWindows=%d).\n",
+		trace ? 1 : 0,
+		enumVirusek ? 1 : 0);
 
 	int ok = 0;
 	int fail = 0;
@@ -123,10 +135,18 @@ bool InstallVirusekTriggerTraceHooks(Config& config)
 			fail++; \
 	} while (0)
 
+	if (trace || enumVirusek)
+		TRY(L"user32", "EnumWindows", EnumWindows_Combined, EnumWindows_Orig);
+
+	if (!trace)
+	{
+		log("[VirusekTriggerTrace] Hook results (EnumWindows only): ok=%d failed=%d\n", ok, fail);
+		return true;
+	}
+
 	TRY(L"user32", "FindWindowW", FindWindowW_Trace, FindWindowW_Orig);
 	TRY(L"user32", "FindWindowExA", FindWindowExA_Trace, FindWindowExA_Orig);
 	TRY(L"user32", "FindWindowExW", FindWindowExW_Trace, FindWindowExW_Orig);
-	TRY(L"user32", "EnumWindows", EnumWindows_Trace, EnumWindows_Orig);
 	TRY(L"user32", "GetForegroundWindow", GetForegroundWindow_Trace, GetForegroundWindow_Orig);
 	TRY(L"user32", "GetDesktopWindow", GetDesktopWindow_Trace, GetDesktopWindow_Orig);
 	TRY(L"user32", "GetShellWindow", GetShellWindow_Trace, GetShellWindow_Orig);
