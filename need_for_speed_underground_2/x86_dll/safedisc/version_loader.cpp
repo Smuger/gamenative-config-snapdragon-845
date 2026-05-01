@@ -75,6 +75,7 @@ static bool SafeDiscTraceEnabled()
 typedef NTSTATUS(WINAPI* NtDeviceIoControlFile_typedef)(HANDLE FileHandle, HANDLE Event, PIO_APC_ROUTINE ApcRoutine, PVOID ApcContext, PIO_STATUS_BLOCK IoStatusBlock, ULONG IoControlCode, PVOID InputBuffer, ULONG InputBufferLength, PVOID OutputBuffer, ULONG OutputBufferLength);
 NtDeviceIoControlFile_typedef NtDeviceIoControlFile_Orig;
 static unsigned int ioctlCodeMain = 0xef002407;
+static volatile LONG s_secdrvMainIoctlHitCount = 0;
 
 typedef BOOL(WINAPI* CreateProcessA_typedef)(LPCSTR lpApplicationName, LPSTR lpCommandLine, LPSECURITY_ATTRIBUTES lpProcessAttributes, LPSECURITY_ATTRIBUTES lpThreadAttributes, BOOL bInheritHandles, DWORD dwCreationFlags, LPVOID lpEnvironment, LPCSTR lpCurrentDirectory, LPSTARTUPINFOA lpStartupInfo, LPPROCESS_INFORMATION lpProcessInformation);
 CreateProcessA_typedef CreateProcessA_Orig;
@@ -186,6 +187,10 @@ NTSTATUS NTAPI NtDeviceIoControlFile_Hook(HANDLE FileHandle, HANDLE Event, PIO_A
 	//log("Entering NtDeviceIoControlFile_Hook\n");
 	// all IOCTLs will pass through this function, but it's probably fine since secdrv uses unique control codes
 	if (IoControlCode == ioctlCodeMain) {
+		LONG n = InterlockedIncrement(&s_secdrvMainIoctlHitCount);
+		if (n == 1)
+			log("[SafeDisc] secdrv userspace IOCTL 0xEF002407 first hit (pid=%u); SafeDisc_ProcessMainIoctl will run for this request\n",
+				GetCurrentProcessId());
 		//log("Override IoStatusBlock->Status Handle: %d Status: %d\n", (DWORD)FileHandle, IoStatusBlock->Status);
 		BOOL sdOk = SafeDisc_ProcessMainIoctl(InputBuffer, InputBufferLength, OutputBuffer, OutputBufferLength);
 		if (sdOk)
@@ -380,6 +385,22 @@ static bool SafeDisc_IsSdLocaleDllPathW(LPCWSTR path)
 	return SafeDisc_IsSdLocaleDllPathA(narrow);
 }
 
+/** NFS / SafeDisc titles often probe CD paths such as F:\\bin.dat ù log when tracing. */
+static bool SafeDisc_PathMentionsBinDatA(LPCSTR p)
+{
+	if (!p)
+		return false;
+	return strstr(p, "bin.dat") != NULL || strstr(p, "BIN.DAT") != NULL;
+}
+
+static bool SafeDisc_PathMentionsBinDatW(LPCWSTR p)
+{
+	char narrow[MAX_PATH * 4];
+	if (!p || WideCharToMultiByte(CP_ACP, 0, p, -1, narrow, sizeof(narrow), NULL, NULL) <= 0)
+		return false;
+	return SafeDisc_PathMentionsBinDatA(narrow);
+}
+
 HANDLE WINAPI CreateFileA_Hook(LPCSTR lpFileName, DWORD dwDesiredAccess, DWORD dwShareMode, LPSECURITY_ATTRIBUTES lpSecurityAttributes, DWORD dwCreationDisposition, DWORD dwFlagsAndAttributes, HANDLE hTemplateFile)
 {
 	std::string strFileName;
@@ -389,6 +410,8 @@ HANDLE WINAPI CreateFileA_Hook(LPCSTR lpFileName, DWORD dwDesiredAccess, DWORD d
 		strFileName = config.GetFileMapping(lpFileName);
 		if (SafeDiscTraceEnabled() && strcmp(pathBeforeMap, strFileName.c_str()) != 0)
 			log("[SafeDisc] fileMappings: CreateFileA \"%s\" -> \"%s\"\n", pathBeforeMap, strFileName.c_str());
+		if (SafeDiscTraceEnabled() && pathBeforeMap && SafeDisc_PathMentionsBinDatA(pathBeforeMap))
+			log("[SafeDisc] disc: CreateFileA probe \"%s\" (after mapping: \"%s\")\n", pathBeforeMap, strFileName.c_str());
 		lpFileName = strFileName.c_str();
 	}
 
@@ -438,6 +461,8 @@ HANDLE WINAPI CreateFileA_Hook_KBase(LPCSTR lpFileName, DWORD dwDesiredAccess, D
 		strFileName = config.GetFileMapping(lpFileName);
 		if (SafeDiscTraceEnabled() && strcmp(pathBeforeMap, strFileName.c_str()) != 0)
 			log("[SafeDisc] fileMappings: CreateFileA_KBase \"%s\" -> \"%s\"\n", pathBeforeMap, strFileName.c_str());
+		if (SafeDiscTraceEnabled() && pathBeforeMap && SafeDisc_PathMentionsBinDatA(pathBeforeMap))
+			log("[SafeDisc] disc: CreateFileA_KBase probe \"%s\" (after mapping: \"%s\")\n", pathBeforeMap, strFileName.c_str());
 		lpFileName = strFileName.c_str();
 	}
 
@@ -477,6 +502,8 @@ HANDLE WINAPI CreateFileW_Hook(LPCWSTR lpFileName, DWORD dwDesiredAccess, DWORD 
 		usePath = (LPCWSTR)tempPathHolder;
 		if (SafeDiscTraceEnabled() && origW && wcscmp(origW, usePath) != 0)
 			log("[SafeDisc] fileMappings: CreateFileW \"%ls\" -> \"%ls\"\n", origW, usePath);
+		if (SafeDiscTraceEnabled() && origW && SafeDisc_PathMentionsBinDatW(origW))
+			log("[SafeDisc] disc: CreateFileW probe \"%ls\" -> \"%ls\"\n", origW, usePath);
 	}
 
 	if (config.GetBool("SafeDiscSupport", false) && config.GetBool("SafeDiscSpoofSdLocaleProbe", true)
@@ -532,6 +559,8 @@ HANDLE WINAPI CreateFileW_Hook_KBase(LPCWSTR lpFileName, DWORD dwDesiredAccess, 
 		usePath = (LPCWSTR)tempPathHolder;
 		if (SafeDiscTraceEnabled() && origWK && wcscmp(origWK, usePath) != 0)
 			log("[SafeDisc] fileMappings: CreateFileW_KBase \"%ls\" -> \"%ls\"\n", origWK, usePath);
+		if (SafeDiscTraceEnabled() && origWK && SafeDisc_PathMentionsBinDatW(origWK))
+			log("[SafeDisc] disc: CreateFileW_KBase probe \"%ls\" -> \"%ls\"\n", origWK, usePath);
 	}
 
 	if (config.GetBool("SafeDiscSupport", false) && config.GetBool("SafeDiscSpoofSdLocaleProbe", true)
